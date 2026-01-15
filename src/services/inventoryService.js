@@ -101,10 +101,56 @@ export const InventoryService = {
     }
   },
 
-  // --- BORRAR ---
+  // --- BORRAR (MEJORADO CON CASCADE MANUAL) ---
   deleteProduct: async (id) => {
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (error) throw error;
+    try {
+        // 1. Obtener variantes del producto para limpiar sus dependencias
+        const { data: variants } = await supabase.from('variants').select('id').eq('product_id', id);
+        
+        if (variants && variants.length > 0) {
+            const variantIds = variants.map(v => v.id);
+            
+            // 2. Eliminar items de venta relacionados a esas variantes
+            // (Esto borra el historial de ventas de este producto específico)
+            const { error: salesError } = await supabase.from('sale_items').delete().in('variant_id', variantIds);
+            if (salesError) console.warn("Error borrando historial ventas:", salesError);
+
+            // 3. Eliminar Variantes
+            const { error: varError } = await supabase.from('variants').delete().in('id', variantIds);
+            if (varError) throw varError;
+        }
+
+        // 4. Eliminar Producto Padre
+        const { error: prodError } = await supabase.from('products').delete().eq('id', id);
+        if (prodError) throw prodError;
+
+        return true;
+    } catch (e) {
+        console.error("Error eliminando producto:", e.message);
+        throw e;
+    }
+  },
+
+  // --- RESET TOTAL DE LA BASE DE DATOS ---
+  deleteAllData: async () => {
+      try {
+          // Orden crítico: Hijos -> Padres para evitar restricciones de llave foránea
+          // .neq('id', 0) es un truco para seleccionar 'todas' las filas ya que Supabase exige un filtro en delete.
+          
+          // 1. Borrar detalle de ventas
+          await supabase.from('sale_items').delete().neq('id', 0); 
+          // 2. Borrar cabeceras de ventas
+          await supabase.from('sales').delete().neq('id', 0);
+          // 3. Borrar variantes
+          await supabase.from('variants').delete().neq('id', 0);
+          // 4. Borrar productos maestros
+          await supabase.from('products').delete().neq('id', 0);
+          
+          return true;
+      } catch (e) {
+          console.error("Error reseteando DB:", e);
+          throw e;
+      }
   },
 
   // --- ABASTECIMIENTO ---

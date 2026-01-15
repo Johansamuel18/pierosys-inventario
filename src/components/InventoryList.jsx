@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ChevronDown, ChevronUp, Package, Trash2, Ruler, ArrowRight, History, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, Package, Trash2, Ruler, ArrowRight, History, Loader2, AlertTriangle, RefreshCw, AlertOctagon } from 'lucide-react';
 
 const InventoryList = () => {
   const [products, setProducts] = useState([]);
@@ -50,8 +50,10 @@ const InventoryList = () => {
     try {
       setLoading(true);
       const data = await InventoryService.getProducts();
-      const hierarchicalData = processData(data);
-      setProducts(hierarchicalData);
+      // Si el servicio devuelve datos anidados (que es lo que hace getProducts actualmente), no necesitamos processData complejo
+      // pero si el servicio cambia a plano, esto ayudaría.
+      // Actualmente getProducts devuelve estructura anidada.
+      setProducts(data);
     } catch (error) {
       console.error("Error cargando inventario:", error);
     } finally {
@@ -64,15 +66,31 @@ const InventoryList = () => {
   }, []);
 
   const handleDelete = async (id) => {
-    if(confirm('¿Seguro que deseas eliminar este producto? Esta acción es irreversible en base de datos.')) {
+    if(confirm('¿Seguro que deseas eliminar este producto? \n\n⚠️ NOTA: Se borrará también el historial de ventas asociado a este producto.')) {
         try {
-            await InventoryService.deleteProduct(id); // Asumiendo que el servicio tiene este método
-            refresh();
+            await InventoryService.deleteProduct(id);
+            await refresh();
         } catch (e) {
-            alert("Error al eliminar");
+            alert("Error al eliminar: " + e.message);
         }
     }
   }
+
+  const handleResetAll = async () => {
+    const word = prompt("⚠️ ZONA DE PELIGRO ⚠️\n\nEsta acción ELIMINARÁ TODOS los productos, ventas y configuraciones.\n\nPara confirmar, escribe: BORRAR TODO");
+    if (word === "BORRAR TODO") {
+        setLoading(true);
+        try {
+            await InventoryService.deleteAllData();
+            await refresh();
+            alert("Sistema restablecido a 0 correctamente.");
+        } catch (e) {
+            alert("Error al resetear: " + e.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+  };
 
   // Filtro
   const filteredProducts = products.filter(p => 
@@ -92,7 +110,7 @@ const InventoryList = () => {
             </p>
         </div>
         
-        <div className="flex items-center gap-2 w-full md:w-auto">
+        <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
              <input 
                 type="text" 
                 placeholder="Buscar..." 
@@ -100,9 +118,14 @@ const InventoryList = () => {
                 onChange={e => setSearchTerm(e.target.value)}
                 className="bg-slate-800 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 w-full"
              />
-             <button onClick={refresh} className="p-2 bg-slate-800 text-emerald-400 rounded-lg hover:bg-slate-700">
-                <RefreshCw size={20} className={loading ? 'animate-spin' : ''}/>
-             </button>
+             <div className="flex gap-2 w-full md:w-auto">
+                <button onClick={refresh} className="p-2 bg-slate-800 text-emerald-400 rounded-lg hover:bg-slate-700 flex-1 md:flex-none justify-center flex">
+                    <RefreshCw size={20} className={loading ? 'animate-spin' : ''}/>
+                </button>
+                <button onClick={handleResetAll} className="p-2 bg-rose-900/50 text-rose-500 rounded-lg hover:bg-rose-900 border border-rose-900 flex-1 md:flex-none justify-center flex transition-colors" title="Borrar Todo">
+                    <AlertOctagon size={20} />
+                </button>
+             </div>
         </div>
       </div>
 
@@ -192,7 +215,7 @@ const InventoryList = () => {
                                                 <span className="block font-black text-lg text-emerald-600">
                                                     {(variant.stock || 0).toFixed(2)}
                                                 </span>
-                                                <span className="text-[10px] text-slate-400 uppercase font-bold">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase">
                                                     {variant.salesUnit}
                                                 </span>
                                             </div>
