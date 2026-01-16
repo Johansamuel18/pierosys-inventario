@@ -1,13 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURACIÓN SUPABASE ---
-// Asegúrate de que estas credenciales coincidan con las de tu proyecto en Supabase (Project Settings -> API)
 const supabaseUrl = 'https://zhjwhllxznfzeudwryhy.supabase.co'; 
-const supabaseKey = 'sb_publishable_W1EeD7BvFF6n-s58NcikOg_n-VVPcxm'; // Reemplaza esto con tu PUBLIC KEY real si es diferente
+const supabaseKey = 'sb_publishable_W1EeD7BvFF6n-s58NcikOg_n-VVPcxm';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const STORAGE_KEY_RATE = 'piero_rate';
+
+// Helper para normalizar strings (quitar espacios extra, minusculas)
+const normalize = (str) => {
+    if (!str) return '';
+    return String(str).toLowerCase().trim();
+};
 
 export const InventoryService = {
   // --- TASA DE CAMBIO ---
@@ -32,7 +37,7 @@ export const InventoryService = {
             .order('created_at', { ascending: false });
         
         if (error) throw error;
-        if (!data) return []; // VALIDACIÓN CRÍTICA: Supabase puede devolver null
+        if (!data) return [];
         
         return data.map(p => ({
             id: p.id,
@@ -54,17 +59,46 @@ export const InventoryService = {
             }))
         }));
     } catch (e) {
-        console.error("Supabase Error (getProducts):", e.message);
-        // Alertar al usuario si es un error de conexión/permisos
-        if(e.message) console.warn("Error de conexión DB: " + e.message); // Cambiado a warn para no bloquear UI con alertas constantes
+        console.warn("Error conexión DB:", e.message);
         return [];
+    }
+  },
+
+  // --- HELPER: MAPA DE VARIANTES (Para Importación Ventas) ---
+  getVariantsMap: async () => {
+    try {
+        const { data, error } = await supabase
+            .from('variants')
+            .select('id, name, products (name)');
+
+        if (error) throw error;
+
+        // Creamos un Map normalizado para búsqueda flexible
+        const map = {};
+        
+        data.forEach(v => {
+            const prodName = normalize(v.products?.name);
+            const varName = normalize(v.name);
+            
+            // 1. Coincidencia exacta Prod + Var
+            map[`${prodName}|${varName}`] = v.id;
+            
+            // 2. Coincidencia solo producto (fallback)
+            if (!map[prodName]) {
+                map[prodName] = v.id;
+            }
+        });
+        
+        return map;
+    } catch (e) {
+        console.error("Error building variants map", e);
+        return {};
     }
   },
 
   // --- CREAR PRODUCTO ---
   addProduct: async (productData) => {
     try {
-        // 1. Insertar Producto
         const { data: productResult, error: prodError } = await supabase
             .from('products')
             .insert({
@@ -76,7 +110,6 @@ export const InventoryService = {
 
         if (prodError) throw prodError;
 
-        // 2. Insertar Variantes
         const variantsPayload = productData.variants.map(v => ({
             product_id: productResult.id,
             name: v.name,
@@ -101,26 +134,209 @@ export const InventoryService = {
     }
   },
 
-  // --- BORRAR (MEJORADO CON CASCADE MANUAL) ---
+  // --- AGREGAR VARIANTE A PRODUCTO EXISTENTE ---
+  addVariant: async (productId, variantData) => {
+      try {
+          const { error } = await supabase
+            .from('variants')
+            .insert({
+                product_id: productId,
+                name: variantData.name,
+                price_buy_soles: variantData.price_buy_soles,
+                price_sell_brl: variantData.price_sell_brl,
+                stock_quantity: variantData.stock_quantity,
+                purchase_unit: variantData.purchase_unit || 'UNIDAD', 
+                sales_unit: 'UND',
+                conversion_factor: variantData.conversion_factor || 1,
+                min_stock: 5
+            });
+          
+          if (error) throw error;
+          return true;
+      } catch (e) {
+          console.error("Error adding variant:", e);
+          throw e;
+      }
+  },
+
+  // --- IMPORTACIÓN MASIVA INVENTARIO ---
+  importProductBatch: async (groupedProduct) => {
+    // 1. Verificar si el producto ya existe
+    let productId = null;
+    
+    const { data: existing } = await supabase
+        .from('products')
+        .select('id')
+        .ilike('name', groupedProduct.name)
+        .maybeSingle();
+
+    if (existing) {
+        productId = existing.id;
+        
+        // Si ya existe, ACTUALIZAMOS STOCK
+        const { data: existingVars } = await supabase
+            .from('variants')
+            .select('id, name')
+            .eq('product_id', productId);
+            
+        for (const vNew of groupedProduct.variants) {
+             const targetVar = existingVars?.find(ev => normalize(ev.name) === normalize(vNew.name)) || existingVars?.[0];
+             
+             if (targetVar) {
+                 await supabase.from('variants')
+                    .update({ 
+                        stock_quantity: vNew.stock_quantity,
+                        price_buy_soles: vNew.price_buy_soles,
+                        price_sell_brl: vNew.price_sell_brl
+                    })
+                    .eq('id', targetVar.id);
+             } else {
+                 await supabase.from('variants').insert({
+                    product_id: productId,
+                    name: vNew.name,
+                    purchase_unit: vNew.purchase_unit,
+                    sales_unit: vNew.sales_unit,
+                    conversion_factor: vNew.conversion_factor,
+                    price_buy_soles: vNew.price_buy_soles,
+                    price_sell_brl: vNew.price_sell_brl,
+                    stock_quantity: vNew.stock_quantity,
+                 });
+             }
+        }
+        return true;
+
+    } else {
+        // Crear Padre Nuevo
+        const { data: newProd, error } = await supabase
+            .from('products')
+            .insert({ 
+                name: groupedProduct.name, 
+                type: groupedProduct.type 
+            })
+            .select()
+            .single();
+        if (error) throw error;
+        productId = newProd.id;
+
+        const variantsPayload = groupedProduct.variants.map(v => ({
+            product_id: productId,
+            name: v.name,
+            purchase_unit: v.purchase_unit,
+            sales_unit: v.sales_unit,
+            conversion_factor: v.conversion_factor,
+            price_buy_soles: v.price_buy_soles,
+            price_sell_brl: v.price_sell_brl,
+            stock_quantity: v.stock_quantity,
+            min_stock: 5
+        }));
+
+        const { error: varError } = await supabase
+            .from('variants')
+            .insert(variantsPayload);
+
+        if (varError) throw varError;
+        return true;
+    }
+  },
+
+  // --- IMPORTACIÓN HISTORIAL VENTAS ---
+  importHistoricalSales: async (salesRows, variantsMap) => {
+    let success = 0;
+    let failed = 0;
+    const errors = [];
+
+    const parseLatinDate = (dateStr) => {
+        if (!dateStr) return new Date(); 
+        if (dateStr instanceof Date) return dateStr;
+        if (typeof dateStr === 'number') {
+             return new Date(Math.round((dateStr - 25569)*86400*1000));
+        }
+        try {
+            const parts = String(dateStr).split(/[\/\-]/); 
+            if (parts.length === 3) {
+                return new Date(parts[2], parts[1] - 1, parts[0]);
+            }
+            return new Date(dateStr); 
+        } catch (e) { return new Date(); }
+    };
+
+    for (const row of salesRows) {
+        try {
+            const prodName = normalize(row['Producto'] || row['name']);
+            const measureName = normalize(row['Medida'] || row['Variante']);
+            
+            let variantId = variantsMap[`${prodName}|${measureName}`];
+            if (!variantId) variantId = variantsMap[prodName];
+
+            if (!variantId) {
+                // Intento fuzzy
+                const mapKeys = Object.keys(variantsMap);
+                const partialKey = mapKeys.find(k => k.includes(prodName) || prodName.includes(k.split('|')[0]));
+                if (partialKey) variantId = variantsMap[partialKey];
+            }
+
+            if (!variantId) {
+                failed++;
+                if (failed <= 10) errors.push(`No existe en BD: "${row['Producto']}"`);
+                continue; 
+            }
+
+            const qty = Math.abs(parseFloat(row['Cantidad'] || row['qty'] || 0));
+            const totalSale = Math.abs(parseFloat(row['Total Venta (R$)'] || row['Total'] || 0));
+            const costUnit = Math.abs(parseFloat(row['Costo Unit. (R$)'] || row['Costo'] || 0)); 
+            const saleDate = parseLatinDate(row['Fecha']);
+
+            const { data: saleHeader, error: headError } = await supabase
+                .from('sales')
+                .insert({
+                    created_at: saleDate.toISOString(), 
+                    total_brl: totalSale,
+                    discount_brl: 0
+                })
+                .select()
+                .single();
+
+            if (headError) throw headError;
+
+            const historicalCostTotal = costUnit * qty;
+            const priceUnit = qty > 0 ? (totalSale / qty) : 0;
+
+            const { error: itemError } = await supabase
+                .from('sale_items')
+                .insert({
+                    sale_id: saleHeader.id,
+                    variant_id: variantId,
+                    quantity: qty,
+                    price_unit_brl: priceUnit,
+                    subtotal_brl: totalSale,
+                    historical_cost_unit_brl: costUnit,
+                    historical_cost_total_brl: historicalCostTotal
+                });
+
+            if (itemError) throw itemError;
+            success++;
+        } catch (e) {
+            console.error("Row Error:", e);
+            failed++;
+        }
+    }
+    return { success, failed, errors };
+  },
+
+  // --- BORRAR PRODUCTO COMPLETO ---
   deleteProduct: async (id) => {
     try {
-        // 1. Obtener variantes del producto para limpiar sus dependencias
         const { data: variants } = await supabase.from('variants').select('id').eq('product_id', id);
         
         if (variants && variants.length > 0) {
             const variantIds = variants.map(v => v.id);
-            
-            // 2. Eliminar items de venta relacionados a esas variantes
-            // (Esto borra el historial de ventas de este producto específico)
             const { error: salesError } = await supabase.from('sale_items').delete().in('variant_id', variantIds);
             if (salesError) console.warn("Error borrando historial ventas:", salesError);
 
-            // 3. Eliminar Variantes
             const { error: varError } = await supabase.from('variants').delete().in('id', variantIds);
             if (varError) throw varError;
         }
 
-        // 4. Eliminar Producto Padre
         const { error: prodError } = await supabase.from('products').delete().eq('id', id);
         if (prodError) throw prodError;
 
@@ -131,21 +347,31 @@ export const InventoryService = {
     }
   },
 
-  // --- RESET TOTAL DE LA BASE DE DATOS ---
+  // --- BORRAR VARIANTE INDIVIDUAL (NUEVO) ---
+  deleteVariant: async (variantId) => {
+      try {
+        // Primero borramos ventas asociadas para evitar errores de llave foránea (si no hay cascade)
+        // o para mantener la base limpia.
+        const { error: salesError } = await supabase.from('sale_items').delete().eq('variant_id', variantId);
+        if (salesError) console.warn("Error limpiando ventas de la variante:", salesError.message);
+
+        // Borrar variante
+        const { error } = await supabase.from('variants').delete().eq('id', variantId);
+        if (error) throw error;
+        
+        return true;
+      } catch (e) {
+          console.error("Error eliminando variante:", e);
+          throw e;
+      }
+  },
+
   deleteAllData: async () => {
       try {
-          // Orden crítico: Hijos -> Padres para evitar restricciones de llave foránea
-          // .neq('id', 0) es un truco para seleccionar 'todas' las filas ya que Supabase exige un filtro en delete.
-          
-          // 1. Borrar detalle de ventas
           await supabase.from('sale_items').delete().neq('id', 0); 
-          // 2. Borrar cabeceras de ventas
           await supabase.from('sales').delete().neq('id', 0);
-          // 3. Borrar variantes
           await supabase.from('variants').delete().neq('id', 0);
-          // 4. Borrar productos maestros
           await supabase.from('products').delete().neq('id', 0);
-          
           return true;
       } catch (e) {
           console.error("Error reseteando DB:", e);
@@ -153,80 +379,66 @@ export const InventoryService = {
       }
   },
 
-  // --- ABASTECIMIENTO ---
-  addSupply: async (productId, variantId, quantityInput, unitName, contentPerUnit, costPerInputUnitSoles) => {
-    let targetVariantId = variantId;
-    
-    // Si no hay variante, buscar la primera del producto
-    if (!targetVariantId) {
-        const { data } = await supabase.from('variants').select('id').eq('product_id', productId).limit(1);
-        if (data && data.length > 0) targetVariantId = data[0].id;
-    }
+  // --- ABASTECIMIENTO (CRÍTICO: STOCK + COSTO + PRECIO) ---
+  addSupply: async (variantId, addedQty, newCostSoles, newPriceSellBRL) => {
+    if (!variantId) throw new Error("ID de Variante es requerido");
 
-    if (!targetVariantId) throw new Error("Variante no encontrada");
-
-    // Leer estado actual
+    // 1. Obtener datos actuales (para sumar stock)
     const { data: currentVariant, error: fetchError } = await supabase
         .from('variants')
-        .select('*')
-        .eq('id', targetVariantId)
+        .select('stock_quantity, price_buy_soles')
+        .eq('id', variantId)
         .single();
     
     if (fetchError) throw fetchError;
 
-    const qty = parseFloat(quantityInput) || 0;
-    const factor = parseFloat(contentPerUnit) || parseFloat(currentVariant.conversion_factor) || 1;
-    const stockToAdd = qty * factor;
-    
-    const newCostUnitSoles = costPerInputUnitSoles > 0 ? (costPerInputUnitSoles / factor) : currentVariant.price_buy_soles;
+    // 2. Calcular nuevo stock
+    const currentStock = parseFloat(currentVariant.stock_quantity) || 0;
+    const finalStock = currentStock + parseFloat(addedQty);
 
-    // Actualizar
+    // 3. Objeto de actualización
+    const updatePayload = {
+        stock_quantity: finalStock,
+        // Actualizamos costo si viene > 0, sino mantenemos el anterior (seguridad)
+        price_buy_soles: newCostSoles > 0 ? newCostSoles : currentVariant.price_buy_soles
+    };
+
+    // 4. Si viene nuevo precio de venta, lo agregamos al update
+    if (newPriceSellBRL > 0) {
+        updatePayload.price_sell_brl = newPriceSellBRL;
+    }
+
+    // 5. Ejecutar Update Atómico
     const { error: updateError } = await supabase
         .from('variants')
-        .update({
-            stock_quantity: parseFloat(currentVariant.stock_quantity) + stockToAdd,
-            price_buy_soles: newCostUnitSoles
-        })
-        .eq('id', targetVariantId);
+        .update(updatePayload)
+        .eq('id', variantId);
 
     if (updateError) throw updateError;
-    return stockToAdd;
+    return true;
   },
 
-  // --- VENTAS ---
+  // --- VENTA ---
   processSale: async (productId, variantId, quantitySold, totalPriceBRL) => {
     const rate = parseFloat(localStorage.getItem(STORAGE_KEY_RATE) || 1.6);
     
-    // 1. Obtener Costo Actual
-    let targetVariantId = variantId;
-    let costSolesCurrent = 0;
-    let currentStock = 0;
+    // Obtener datos frescos de la variante
+    const { data: variant } = await supabase
+        .from('variants')
+        .select('*')
+        .eq('id', variantId)
+        .single();
+        
+    if(!variant) throw new Error("Variante no encontrada");
 
-    if(!targetVariantId) {
-         const { data } = await supabase.from('variants').select('*').eq('product_id', productId).limit(1);
-         if(data && data[0]) {
-             targetVariantId = data[0].id;
-             costSolesCurrent = data[0].price_buy_soles;
-             currentStock = data[0].stock_quantity;
-         } else {
-             throw new Error("Producto sin variantes");
-         }
-    } else {
-        const { data } = await supabase.from('variants').select('*').eq('id', targetVariantId).single();
-        if(!data) throw new Error("Variante no encontrada en BD");
-        costSolesCurrent = data.price_buy_soles;
-        currentStock = data.stock_quantity;
-    }
+    const costSolesCurrent = variant.price_buy_soles;
+    const currentStock = variant.stock_quantity;
 
-    // Validación de Stock (opcional, se puede permitir negativo si se desea)
-    // if (currentStock < quantitySold) throw new Error(`Stock Insuficiente (Actual: ${currentStock})`);
-
-    // 2. Cálculos Congelados
     const unitPriceBRL = quantitySold > 0 ? (totalPriceBRL / quantitySold) : 0;
     const historicalCostUnitBRL = costSolesCurrent * rate;
     const historicalCostTotalBRL = historicalCostUnitBRL * quantitySold;
 
-    // 3. Header Venta
+    // Header Venta
     const { data: saleHeader, error: saleError } = await supabase
         .from('sales')
         .insert({
@@ -238,12 +450,12 @@ export const InventoryService = {
 
     if (saleError) throw saleError;
 
-    // 4. Item Venta
+    // Item Venta
     const { error: itemError } = await supabase
         .from('sale_items')
         .insert({
             sale_id: saleHeader.id,
-            variant_id: targetVariantId,
+            variant_id: variantId,
             quantity: quantitySold,
             price_unit_brl: unitPriceBRL,
             subtotal_brl: totalPriceBRL,
@@ -253,18 +465,17 @@ export const InventoryService = {
 
     if (itemError) throw itemError;
 
-    // 5. Restar Stock
+    // Descontar Stock
     const { error: stockError } = await supabase
         .from('variants')
         .update({ stock_quantity: currentStock - quantitySold })
-        .eq('id', targetVariantId);
+        .eq('id', variantId);
 
     if (stockError) throw stockError;
 
     return true;
   },
 
-  // --- REPORTES ---
   fetchSales: async () => {
     try {
         const { data, error } = await supabase
@@ -302,7 +513,6 @@ export const InventoryService = {
     }
   },
 
-  // --- DASHBOARD ---
   fetchDashboardStats: async () => {
     try {
         const { data: variants } = await supabase.from('variants').select('stock_quantity, price_buy_soles, min_stock');

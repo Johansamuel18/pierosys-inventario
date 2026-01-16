@@ -1,58 +1,568 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ChevronDown, ChevronUp, Package, Trash2, Ruler, ArrowRight, History, Loader2, AlertTriangle, RefreshCw, AlertOctagon } from 'lucide-react';
+import { ChevronDown, ChevronUp, Package, Trash2, Ruler, RefreshCw, AlertOctagon, Plus, X, Save, Loader2, Calculator, Info, Box, Disc, Layers, Archive, Truck, DollarSign, Lock, Pencil } from 'lucide-react';
 
+const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
+
+// ==================================================================================
+// 1. COMPONENTE: MODAL DE CREACIÓN RÁPIDA (MANTENIDO)
+// ==================================================================================
+const QuickVariantModal = ({ isOpen, onClose, product, onSave }) => {
+    // 1. Configuración de Costo (Input)
+    const [costConfig, setCostConfig] = useState({
+        currency: 'PEN',     // 'PEN' | 'BRL'
+        isBulk: true,        // Switch Principal: ¿Empaque Cerrado?
+        rate: 1.60,          // Tasa Default
+        inputValue: '',      // Costo ingresado (ej: 150 soles el rollo)
+        contentValue: ''     // Contenido (ej: 100 metros)
+    });
+
+    const [packagingType, setPackagingType] = useState('CAJA'); 
+    const [stockQty, setStockQty] = useState(''); 
+    const [salePriceBRL, setSalePriceBRL] = useState('');
+    const [variantName, setVariantName] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if(isOpen) {
+            const sysRate = InventoryService.getExchangeRate() || 1.60;
+            setCostConfig({ 
+                currency: 'PEN', 
+                isBulk: true, 
+                rate: sysRate, 
+                inputValue: '', 
+                contentValue: '' 
+            });
+            setPackagingType('CAJA');
+            setStockQty('');
+            setSalePriceBRL('');
+            setVariantName('');
+        }
+    }, [isOpen]);
+
+    const getLabels = () => {
+        if (!costConfig.isBulk) {
+            return { inputLabel: 'Costo Unitario', stockLabel: 'Cantidad (Unidades)', contentLabel: 'N/A' };
+        }
+        switch (packagingType) {
+            case 'ROLLO': return { inputLabel: 'Costo por Rollo', contentLabel: 'Metros por Rollo', stockLabel: 'Cantidad de Rollos' };
+            case 'BULTO': return { inputLabel: 'Costo por Bulto/Saco', contentLabel: 'Kg por Bulto', stockLabel: 'Cantidad de Bultos' };
+            case 'PAQUETE': return { inputLabel: 'Costo por Paquete', contentLabel: 'Unidades por Paquete', stockLabel: 'Cantidad de Paquetes' };
+            default: return { inputLabel: 'Costo por Caja', contentLabel: 'Unidades por Caja', stockLabel: 'Cantidad de Cajas' };
+        }
+    };
+    const labels = getLabels();
+
+    const calculateMath = () => {
+        const costInput = parseFloat(costConfig.inputValue) || 0;
+        const content = parseFloat(costConfig.contentValue) || 1;
+        const rate = parseFloat(costConfig.rate) || 1.60;
+        const qty = parseFloat(stockQty) || 0;
+
+        let unitCostBase = costConfig.isBulk ? (costInput / content) : costInput;
+        let unitCostSoles = 0;
+        let unitCostBRL = 0;
+
+        if (costConfig.currency === 'PEN') {
+            unitCostSoles = unitCostBase;
+            unitCostBRL = unitCostBase * rate; 
+        } else {
+            unitCostBRL = unitCostBase;
+            unitCostSoles = rate > 0 ? (unitCostBase / rate) : 0;
+        }
+
+        // Redondeamos para visualización limpia
+        unitCostBRL = roundMoney(unitCostBRL);
+        unitCostSoles = roundMoney(unitCostSoles);
+
+        const totalStockUnits = costConfig.isBulk ? (qty * content) : qty;
+        
+        return { unitCostSoles, unitCostBRL, totalStockUnits };
+    };
+    const math = calculateMath();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            await onSave({
+                name: variantName,
+                price_buy_soles: math.unitCostSoles, 
+                price_sell_brl: roundMoney(salePriceBRL),
+                stock_quantity: math.totalStockUnits,
+                purchase_unit: costConfig.isBulk ? packagingType : 'UNIDAD',
+                conversion_factor: costConfig.isBulk ? (parseFloat(costConfig.contentValue) || 1) : 1
+            });
+            onClose();
+        } catch (error) {
+            alert(error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen || !product) return null;
+
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200 overflow-y-auto">
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100 my-8 border border-slate-100">
+                <div className="bg-slate-900 p-6 flex justify-between items-center text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500 rounded-full blur-3xl opacity-20 -mr-10 -mt-10"></div>
+                    <div className="relative z-10">
+                        <h3 className="text-xl font-black tracking-tight flex items-center gap-2">
+                            <Plus className="text-emerald-400" strokeWidth={3} size={20}/> Nueva Medida
+                        </h3>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{product.name}</p>
+                    </div>
+                    <button onClick={onClose} className="bg-white/10 p-2 rounded-full text-slate-300 hover:text-white hover:bg-white/20 transition-colors relative z-10"><X size={18}/></button>
+                </div>
+                
+                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nombre Variante / Medida</label>
+                        <input 
+                            autoFocus
+                            type="text" 
+                            placeholder="Ej. Caja Roja / 2 Pulgadas" 
+                            value={variantName}
+                            onChange={e => setVariantName(e.target.value)}
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-700 outline-none focus:border-indigo-500 text-sm transition-colors uppercase"
+                            required
+                        />
+                    </div>
+                    <div className="border-t border-slate-100"></div>
+
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                                <Calculator size={14}/> Configuración Costo
+                            </h4>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                <button type="button" onClick={() => setCostConfig({...costConfig, currency: 'PEN'})} className={`px-3 py-1 rounded text-[10px] font-black transition-all ${costConfig.currency === 'PEN' ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>S/ SOLES</button>
+                                <button type="button" onClick={() => setCostConfig({...costConfig, currency: 'BRL'})} className={`px-3 py-1 rounded text-[10px] font-black transition-all ${costConfig.currency === 'BRL' ? 'bg-white shadow text-emerald-600' : 'text-slate-400'}`}>R$ REALES</button>
+                            </div>
+                        </div>
+
+                        <div className="bg-indigo-50/30 rounded-2xl p-5 border border-indigo-100 relative">
+                            <div className="flex items-center justify-between mb-4">
+                                <span className="text-[10px] font-black uppercase text-slate-500">¿Ingreso por Empaque Cerrado?</span>
+                                <button 
+                                    type="button"
+                                    onClick={() => setCostConfig({...costConfig, isBulk: !costConfig.isBulk})}
+                                    className={`w-12 h-6 rounded-full p-1 transition-colors relative ${costConfig.isBulk ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                                >
+                                    <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${costConfig.isBulk ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                                </button>
+                            </div>
+                            
+                            {costConfig.isBulk && (
+                                <div className="grid grid-cols-4 gap-2 mb-4">
+                                    {[
+                                        { id: 'CAJA', icon: Box, label: 'Caja' },
+                                        { id: 'ROLLO', icon: Disc, label: 'Rollo' },
+                                        { id: 'BULTO', icon: Archive, label: 'Bulto' },
+                                        { id: 'PAQUETE', icon: Layers, label: 'Paq.' }
+                                    ].map(type => (
+                                        <button
+                                            key={type.id}
+                                            type="button"
+                                            onClick={() => setPackagingType(type.id)}
+                                            className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${packagingType === type.id ? 'bg-white border-indigo-500 text-indigo-600 shadow-sm' : 'border-transparent text-slate-400 hover:bg-white/50'}`}
+                                        >
+                                            <type.icon size={16}/>
+                                            <span className="text-[8px] font-black uppercase mt-1">{type.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-12 gap-3 mb-2">
+                                <div className={`${costConfig.isBulk ? 'col-span-4' : 'col-span-6'}`}>
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1 truncate">{labels.inputLabel}</label>
+                                    <input 
+                                        type="number"
+                                        placeholder="0.00"
+                                        value={costConfig.inputValue}
+                                        onChange={e => setCostConfig({...costConfig, inputValue: e.target.value})}
+                                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-black text-slate-800 outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                {costConfig.currency === 'PEN' && (
+                                    <div className={`${costConfig.isBulk ? 'col-span-4' : 'col-span-6'}`}>
+                                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Tasa</label>
+                                        <input 
+                                            type="number" step="0.01"
+                                            value={costConfig.rate} 
+                                            onChange={e => setCostConfig({...costConfig, rate: e.target.value})}
+                                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-black text-slate-800 outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                )}
+                                {costConfig.isBulk && (
+                                    <div className="col-span-4">
+                                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1 truncate">{labels.contentLabel}</label>
+                                        <input 
+                                            type="number"
+                                            placeholder="Contenido"
+                                            value={costConfig.contentValue}
+                                            onChange={e => setCostConfig({...costConfig, contentValue: e.target.value})}
+                                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-black text-slate-800 outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="mt-4 bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex justify-between items-center">
+                                <span className="text-[10px] font-black uppercase text-slate-400">Costo Base Unitario</span>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-xs font-bold text-emerald-400">R$</span>
+                                    <span className="text-xl font-black text-emerald-600">{math.unitCostBRL.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 truncate">{labels.stockLabel}</label>
+                             <input 
+                                type="number" placeholder="0" 
+                                value={stockQty} onChange={e => setStockQty(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-black text-slate-700 outline-none focus:border-indigo-500"
+                             />
+                        </div>
+                        <div>
+                             <label className="block text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Precio Venta (R$)</label>
+                             <input 
+                                type="number" step="0.01" placeholder="0.00" 
+                                value={salePriceBRL} onChange={e => setSalePriceBRL(e.target.value)}
+                                className="w-full bg-emerald-50/50 border border-emerald-100 rounded-xl px-4 py-3 font-black text-emerald-600 outline-none focus:border-emerald-500"
+                                required
+                             />
+                        </div>
+                    </div>
+
+                    <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest py-4 rounded-xl shadow-lg flex justify-center items-center gap-2 transition-transform active:scale-95">
+                        {loading ? <Loader2 className="animate-spin"/> : <Save size={20}/>} Guardar Medida
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// ==================================================================================
+// 2. COMPONENTE: MODAL DE REABASTECIMIENTO (RESTOCK) - RECONSTRUIDO
+// ==================================================================================
+const RestockModal = ({ isOpen, onClose, product, variant, onSave }) => {
+    // Estado de configuración de costos
+    const [costConfig, setCostConfig] = useState({
+        currency: 'PEN',     
+        isBulk: false,
+        rate: 1.60,         
+        inputValue: '',      // Costo Compra
+        contentValue: ''     // Contenido por Bulto
+    });
+
+    const [packagingType, setPackagingType] = useState('CAJA'); 
+    const [stockQty, setStockQty] = useState(''); 
+    const [newSalePrice, setNewSalePrice] = useState(''); 
+    const [loading, setLoading] = useState(false);
+    
+    // NUEVO: Estado de bloqueo para modal (Requerimiento)
+    const [isCostLocked, setIsCostLocked] = useState(true);
+
+    useEffect(() => {
+        if(isOpen && variant) {
+            const sysRate = InventoryService.getExchangeRate() || 1.60;
+            const unitType = variant.purchaseUnit || 'UNIDAD';
+            const wasBulk = variant.conversionFactor > 1 && unitType !== 'UNIDAD';
+            const baseCost = variant.priceBuySoles || 0;
+            
+            // Lógica de Pre-llenado (Requerimiento 1 y 4)
+            // Si es Bulk (Caja), mostramos el costo por Caja (Unit * Factor).
+            // Si es Unidad, mostramos Unit.
+            const initialCost = wasBulk ? baseCost * variant.conversionFactor : baseCost;
+
+            setCostConfig({ 
+                currency: 'PEN', 
+                isBulk: wasBulk, 
+                rate: sysRate, 
+                inputValue: initialCost > 0 ? initialCost.toFixed(2) : '', 
+                contentValue: wasBulk ? variant.conversionFactor : '' 
+            });
+            
+            setIsCostLocked(true); // Siempre inicia bloqueado
+            setPackagingType(unitType === 'ROLLO' ? 'ROLLO' : 'CAJA');
+            setStockQty('');
+            setNewSalePrice(variant.priceSellBRL ? variant.priceSellBRL.toFixed(2) : ''); 
+        }
+    }, [isOpen, variant]);
+
+    const getLabels = () => {
+        if (!costConfig.isBulk) {
+            return { inputLabel: 'Costo Unitario', stockLabel: 'Cantidad a Ingresar (Unidades)', contentLabel: 'N/A' };
+        }
+        switch (packagingType) {
+            case 'ROLLO': return { inputLabel: 'Costo por Rollo', contentLabel: 'Metros/Rollo', stockLabel: 'Cantidad de Rollos' };
+            case 'BULTO': return { inputLabel: 'Costo por Bulto', contentLabel: 'Kg/Bulto', stockLabel: 'Cantidad de Bultos' };
+            case 'PAQUETE': return { inputLabel: 'Costo por Paquete', contentLabel: 'Unid/Paquete', stockLabel: 'Cantidad de Paquetes' };
+            default: return { inputLabel: 'Costo por Caja', contentLabel: 'Unid/Caja', stockLabel: 'Cantidad de Cajas' };
+        }
+    };
+    const labels = getLabels();
+
+    const calculateMath = () => {
+        const costInput = parseFloat(costConfig.inputValue) || 0;
+        const content = parseFloat(costConfig.contentValue) || 1;
+        const rate = parseFloat(costConfig.rate) || 1.60;
+        const qty = parseFloat(stockQty) || 0;
+
+        let unitCostBase = costConfig.isBulk ? (costInput / content) : costInput;
+        let unitCostSoles = 0;
+        let unitCostBRL = 0;
+
+        if (costConfig.currency === 'PEN') {
+            unitCostSoles = unitCostBase;
+            unitCostBRL = unitCostBase * rate; 
+        } else {
+            unitCostBRL = unitCostBase;
+            unitCostSoles = rate > 0 ? (unitCostBase / rate) : 0;
+        }
+
+        // Redondeo
+        unitCostBRL = roundMoney(unitCostBRL);
+        unitCostSoles = roundMoney(unitCostSoles);
+
+        const totalStockToAdd = costConfig.isBulk ? (qty * content) : qty;
+        return { unitCostSoles, unitCostBRL, totalStockToAdd };
+    };
+
+    const math = calculateMath();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            await onSave({
+                variantId: variant.id,
+                addedStock: math.totalStockToAdd,
+                newCostSoles: math.unitCostSoles,
+                newPriceBRL: roundMoney(newSalePrice)
+            });
+            onClose();
+        } catch (error) {
+            alert(error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen || !variant) return null;
+
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-4 animate-in fade-in duration-200 overflow-y-auto">
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 transform scale-100">
+                
+                {/* HEADER DISTINTIVO */}
+                <div className="bg-indigo-900 p-6 relative overflow-hidden text-center text-white">
+                    <div className="relative z-10">
+                        <span className="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em] mb-1 block">ABASTECIENDO INVENTARIO</span>
+                        <h3 className="text-xl font-black uppercase tracking-tight">{product?.name}</h3>
+                        <div className="mt-2 inline-flex items-center gap-2 bg-indigo-800 px-3 py-1 rounded-full border border-indigo-700">
+                             <Ruler size={12} className="text-indigo-300"/>
+                             <span className="text-xs font-bold text-indigo-200 uppercase">{variant.name}</span>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="absolute top-4 right-4 bg-white/10 p-2 rounded-full text-indigo-200 hover:text-white transition-colors z-20"><X size={18}/></button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                    
+                    {/* SECCIÓN 1: CALCULADORA DE COSTO */}
+                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                <Truck size={14}/> Datos de Ingreso
+                            </h4>
+                            <div className="flex bg-white p-1 rounded-lg border border-slate-200">
+                                <button type="button" onClick={() => setCostConfig({...costConfig, currency: 'PEN'})} className={`px-2 py-1 rounded text-[9px] font-black transition-all ${costConfig.currency === 'PEN' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400'}`}>SOLES</button>
+                                <button type="button" onClick={() => setCostConfig({...costConfig, currency: 'BRL'})} className={`px-2 py-1 rounded text-[9px] font-black transition-all ${costConfig.currency === 'BRL' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400'}`}>REALES</button>
+                            </div>
+                        </div>
+
+                        {/* Switch Bulk */}
+                        <div className="flex items-center justify-between mb-4 bg-white p-3 rounded-xl border border-slate-100">
+                            <span className="text-[10px] font-black uppercase text-slate-500">¿Ingreso por {packagingType === 'ROLLO' ? 'Rollo' : 'Caja/Bulto'}?</span>
+                            <button 
+                                type="button"
+                                onClick={() => setCostConfig({...costConfig, isBulk: !costConfig.isBulk})}
+                                className={`w-10 h-5 rounded-full p-0.5 transition-colors relative ${costConfig.isBulk ? 'bg-indigo-500' : 'bg-slate-300'}`}
+                            >
+                                <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${costConfig.isBulk ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                            </button>
+                        </div>
+                        
+                        {/* Selector Tipo Empaque */}
+                        {costConfig.isBulk && (
+                            <div className="grid grid-cols-4 gap-2 mb-4 animate-in fade-in">
+                                {[
+                                    { id: 'CAJA', icon: Box, label: 'Caja' },
+                                    { id: 'ROLLO', icon: Disc, label: 'Rollo' },
+                                    { id: 'BULTO', icon: Archive, label: 'Bulto' },
+                                    { id: 'PAQUETE', icon: Layers, label: 'Paq.' }
+                                ].map(type => (
+                                    <button
+                                        key={type.id}
+                                        type="button"
+                                        onClick={() => setPackagingType(type.id)}
+                                        className={`flex flex-col items-center p-2 rounded border ${packagingType === type.id ? 'bg-white border-indigo-500 text-indigo-600' : 'border-transparent text-slate-400'}`}
+                                    >
+                                        <type.icon size={14}/>
+                                        <span className="text-[7px] font-black uppercase mt-1">{type.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="relative group">
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1 truncate">{labels.inputLabel}</label>
+                                
+                                <div className="relative">
+                                    <input 
+                                        type="number" 
+                                        className={`w-full border rounded-lg pl-3 pr-10 py-2 font-black text-sm outline-none transition-colors ${
+                                            isCostLocked 
+                                            ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' 
+                                            : 'bg-white text-slate-800 border-indigo-500'
+                                        }`}
+                                        placeholder="0.00"
+                                        value={costConfig.inputValue}
+                                        onChange={e => setCostConfig({...costConfig, inputValue: e.target.value})}
+                                        disabled={isCostLocked} // BLOQUEO
+                                    />
+                                    {/* BOTÓN DESBLOQUEO */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCostLocked(!isCostLocked)}
+                                        className="absolute right-2 top-1.5 p-1 rounded hover:bg-slate-200 text-slate-400"
+                                        title={isCostLocked ? "Editar Costo" : "Bloquear"}
+                                    >
+                                        {isCostLocked ? <Lock size={12}/> : <Pencil size={12} className="text-indigo-500"/>}
+                                    </button>
+                                </div>
+                            </div>
+                            {costConfig.currency === 'PEN' && (
+                                <div>
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Tasa Cambio</label>
+                                    <input 
+                                        type="number" step="0.01" 
+                                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-black text-slate-800 text-sm outline-none focus:border-indigo-500"
+                                        value={costConfig.rate}
+                                        onChange={e => setCostConfig({...costConfig, rate: e.target.value})}
+                                    />
+                                </div>
+                            )}
+                            {costConfig.isBulk && (
+                                <div className="col-span-2">
+                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">{labels.contentLabel}</label>
+                                    <input 
+                                        type="number" 
+                                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-black text-slate-800 text-sm outline-none focus:border-indigo-500"
+                                        placeholder="Ej: 20"
+                                        value={costConfig.contentValue}
+                                        onChange={e => setCostConfig({...costConfig, contentValue: e.target.value})}
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* FEEDBACK MATEMÁTICO */}
+                        <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between items-center">
+                            <span className="text-[9px] font-black text-slate-400 uppercase">Costo Unit. Resultante</span>
+                            <div className="text-right">
+                                <span className="block text-lg font-black text-slate-700">R$ {math.unitCostBRL.toFixed(2)}</span>
+                                <span className="block text-[8px] font-bold text-slate-400 uppercase">S/ {math.unitCostSoles.toFixed(2)} (Base)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SECCIÓN 2: CANTIDAD Y ACTUALIZACIÓN DE PRECIO */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 truncate">
+                                 {labels.stockLabel}
+                             </label>
+                             <div className="relative">
+                                <input 
+                                    type="number" 
+                                    placeholder="0" 
+                                    value={stockQty}
+                                    onChange={e => setStockQty(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 font-black text-slate-700 outline-none focus:border-indigo-500 focus:bg-white transition-colors"
+                                />
+                                {costConfig.isBulk && (
+                                    <span className="absolute -bottom-4 right-0 text-[9px] font-bold text-indigo-500">
+                                        = +{math.totalStockToAdd} Unid.
+                                    </span>
+                                )}
+                             </div>
+                        </div>
+                        <div>
+                             <label className="block text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1 flex items-center gap-1">
+                                <DollarSign size={10}/> Nuevo Precio Venta
+                             </label>
+                             <div className="relative">
+                                <span className="absolute left-3 top-3.5 text-emerald-300 font-black text-xs">R$</span>
+                                <input 
+                                    type="number" 
+                                    step="0.01"
+                                    placeholder="0.00" 
+                                    value={newSalePrice}
+                                    onChange={e => setNewSalePrice(e.target.value)}
+                                    className="w-full bg-emerald-50/50 border-2 border-emerald-100 rounded-xl pl-9 pr-4 py-3 font-black text-emerald-600 outline-none focus:border-emerald-500 focus:bg-white transition-colors"
+                                    required
+                                />
+                             </div>
+                        </div>
+                    </div>
+
+                    <button 
+                        type="submit" 
+                        disabled={loading}
+                        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest py-4 rounded-xl shadow-lg flex justify-center items-center gap-2 transition-transform active:scale-95 mt-4"
+                    >
+                        {loading ? <Loader2 className="animate-spin"/> : <Save size={20}/>} 
+                        {loading ? 'Procesando...' : 'Confirmar Ingreso'}
+                    </button>
+
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// ==================================================================================
+// 3. COMPONENTE PRINCIPAL: INVENTORY LIST
+// ==================================================================================
 const InventoryList = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState(null);
+  const [expandedGroupId, setExpandedGroupId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // --- LÓGICA DE AGRUPACIÓN (Supabase Flat -> UI Hierarchical) ---
-  const processData = (flatData) => {
-    if (!flatData) return [];
-    
-    // Si el servicio ya devuelve jerarquía (localStorage legacy), lo usamos directo.
-    if (flatData.length > 0 && flatData[0].variants) return flatData;
+  // Modals State
+  const [isModalOpen, setIsModalOpen] = useState(false); // Quick Variant
+  const [selectedParentProduct, setSelectedParentProduct] = useState(null);
 
-    // Si es Supabase (Plano), agrupamos por 'name' o 'id' del producto padre
-    const groups = {};
-    flatData.forEach(item => {
-      // Asumimos que item tiene { id, name, price, stock, sales_unit... }
-      // Usamos el nombre como clave de agrupación si no hay un parent_id claro
-      const key = item.name; 
-      
-      if (!groups[key]) {
-        groups[key] = {
-          id: item.id || Math.random().toString(), // ID del padre
-          name: item.name,
-          type: item.type || 'producto',
-          variants: []
-        };
-      }
-      
-      // Convertimos el item plano en una "variante"
-      groups[key].variants.push({
-        id: item.id, // El ID de la variante es el ID real de la fila en BD
-        name: item.variant_name || 'Estándar', // O ajusta según tu DB
-        salesUnit: item.sales_unit || 'UND',
-        priceSellBRL: parseFloat(item.price_sell_brl || item.price || 0),
-        priceBuySoles: parseFloat(item.price_buy_soles || 0), // Si existe en DB
-        stock: parseFloat(item.stock_quantity || item.stock || 0),
-        batches: [] // Historial vacío por ahora si no viene de DB
-      });
-    });
-
-    return Object.values(groups);
-  };
+  const [isRestockOpen, setIsRestockOpen] = useState(false); // Restock
+  const [selectedRestockData, setSelectedRestockData] = useState({ product: null, variant: null });
 
   const refresh = async () => {
     try {
       setLoading(true);
       const data = await InventoryService.getProducts();
-      // Si el servicio devuelve datos anidados (que es lo que hace getProducts actualmente), no necesitamos processData complejo
-      // pero si el servicio cambia a plano, esto ayudaría.
-      // Actualmente getProducts devuelve estructura anidada.
       setProducts(data);
     } catch (error) {
       console.error("Error cargando inventario:", error);
@@ -65,174 +575,301 @@ const InventoryList = () => {
     refresh();
   }, []);
 
-  const handleDelete = async (id) => {
-    if(confirm('¿Seguro que deseas eliminar este producto? \n\n⚠️ NOTA: Se borrará también el historial de ventas asociado a este producto.')) {
+  const groupedProducts = useMemo(() => {
+      const groups = {};
+      products.forEach(p => {
+          const key = p.name.trim().toUpperCase();
+          if (!groups[key]) {
+              groups[key] = {
+                  uniqueGroupId: key, 
+                  primaryDbId: p.id,  
+                  name: p.name.toUpperCase(),
+                  type: p.type,
+                  totalStock: 0,
+                  allVariants: []
+              };
+          }
+          if (p.variants && p.variants.length > 0) {
+              p.variants.forEach(v => {
+                  groups[key].allVariants.push({ ...v, parentDbId: p.id });
+                  groups[key].totalStock += (v.stock || 0);
+              });
+          }
+      });
+      
+      const result = Object.values(groups).map(group => {
+          group.allVariants.sort((a, b) => {
+              const extractNum = (str) => {
+                  const match = str.match(/(\d+(\.\d+)?)/);
+                  return match ? parseFloat(match[0]) : null;
+              };
+              const numA = extractNum(a.name);
+              const numB = extractNum(b.name);
+              if (numA !== null && numB !== null) return numB - numA;
+              if (numA !== null) return -1;
+              if (numB !== null) return 1;
+              return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+          });
+          return group;
+      });
+
+      return result.sort((a,b) => a.name.localeCompare(b.name));
+  }, [products]);
+
+  const filteredGroups = groupedProducts.filter(g => 
+    g.name.includes(searchTerm.toUpperCase())
+  );
+
+  // ELIMINAR PRODUCTO COMPLETO (PADRE)
+  const handleDeleteProduct = async (id) => {
+    if(confirm('ATENCIÓN: ¿Seguro que deseas eliminar el PRODUCTO COMPLETO?\n\nSe borrarán TODAS las medidas y todo el historial de ventas.\nEsta acción no se puede deshacer.')) {
         try {
             await InventoryService.deleteProduct(id);
             await refresh();
-        } catch (e) {
-            alert("Error al eliminar: " + e.message);
-        }
-    }
-  }
-
-  const handleResetAll = async () => {
-    const word = prompt("⚠️ ZONA DE PELIGRO ⚠️\n\nEsta acción ELIMINARÁ TODOS los productos, ventas y configuraciones.\n\nPara confirmar, escribe: BORRAR TODO");
-    if (word === "BORRAR TODO") {
-        setLoading(true);
-        try {
-            await InventoryService.deleteAllData();
-            await refresh();
-            alert("Sistema restablecido a 0 correctamente.");
-        } catch (e) {
-            alert("Error al resetear: " + e.message);
-        } finally {
-            setLoading(false);
-        }
+        } catch (e) { alert("Error al eliminar: " + e.message); }
     }
   };
 
-  // Filtro
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ELIMINAR VARIANTE INDIVIDUAL (HIJO)
+  const handleDeleteVariant = async (variantId) => {
+      if(confirm('¿Seguro que deseas eliminar esta medida específica?\n\nEl historial de ventas asociado también se borrará.')) {
+          try {
+              await InventoryService.deleteVariant(variantId);
+              await refresh();
+          } catch (e) { alert("Error al eliminar medida: " + e.message); }
+      }
+  };
+
+  const handleOpenAddVariant = (group) => {
+      setSelectedParentProduct({ id: group.primaryDbId, name: group.name });
+      setIsModalOpen(true);
+  };
+
+  const handleSaveVariant = async (variantData) => {
+      if (!selectedParentProduct) return;
+      await InventoryService.addVariant(selectedParentProduct.id, variantData);
+      await refresh();
+      setExpandedGroupId(selectedParentProduct.name.trim().toUpperCase());
+  };
+
+  const handleOpenRestock = (group, variant) => {
+      setSelectedRestockData({ 
+          product: { name: group.name }, 
+          variant: variant 
+      });
+      setIsRestockOpen(true);
+  };
+
+  const handleSaveRestock = async (data) => {
+      await InventoryService.addSupply(
+          data.variantId, 
+          data.addedStock, 
+          data.newCostSoles,
+          data.newPriceBRL
+      );
+      await refresh();
+  };
+
+  const handleResetAll = async () => {
+    const word = prompt("ESCRIBE: 'BORRAR TODO' para eliminar inventario y ventas.");
+    if (word === "BORRAR TODO") {
+        setLoading(true);
+        await InventoryService.deleteAllData();
+        await refresh();
+        setLoading(false);
+    }
+  };
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
-      {/* HEADER */}
-      <div className="bg-slate-900 p-6 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div>
-            <h2 className="text-xl font-black text-white uppercase tracking-widest flex items-center gap-2">
-            <Package className="text-emerald-500" /> Inventario Maestro
-            </h2>
-            <p className="text-slate-400 text-xs mt-1">
-                {loading ? 'Sincronizando...' : `${products.length} Productos Agrupados`}
-            </p>
+    <>
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden min-h-[500px]">
+        {/* HEADER */}
+        <div className="bg-slate-900 p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h2 className="text-xl font-black text-white uppercase tracking-widest flex items-center gap-2">
+                <Package className="text-emerald-500" /> Inventario Maestro
+                </h2>
+                <p className="text-slate-400 text-xs mt-1">
+                    {loading ? 'Sincronizando...' : `${groupedProducts.length} Productos Únicos (Agrupados)`}
+                </p>
+            </div>
+            
+            <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
+                <input 
+                    type="text" 
+                    placeholder="Buscar producto..." 
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="bg-slate-800 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 w-full placeholder-slate-500 font-bold"
+                />
+                <div className="flex gap-2 w-full md:w-auto">
+                    <button onClick={refresh} className="p-2 bg-slate-800 text-emerald-400 rounded-lg hover:bg-slate-700 flex-1 md:flex-none justify-center flex">
+                        <RefreshCw size={20} className={loading ? 'animate-spin' : ''}/>
+                    </button>
+                    <button onClick={handleResetAll} className="p-2 bg-rose-900/50 text-rose-500 rounded-lg hover:bg-rose-900 border border-rose-900 flex-1 md:flex-none justify-center flex transition-colors" title="Borrar Todo">
+                        <AlertOctagon size={20} />
+                    </button>
+                </div>
+            </div>
         </div>
-        
-        <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
-             <input 
-                type="text" 
-                placeholder="Buscar..." 
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="bg-slate-800 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 w-full"
-             />
-             <div className="flex gap-2 w-full md:w-auto">
-                <button onClick={refresh} className="p-2 bg-slate-800 text-emerald-400 rounded-lg hover:bg-slate-700 flex-1 md:flex-none justify-center flex">
-                    <RefreshCw size={20} className={loading ? 'animate-spin' : ''}/>
-                </button>
-                <button onClick={handleResetAll} className="p-2 bg-rose-900/50 text-rose-500 rounded-lg hover:bg-rose-900 border border-rose-900 flex-1 md:flex-none justify-center flex transition-colors" title="Borrar Todo">
-                    <AlertOctagon size={20} />
-                </button>
-             </div>
-        </div>
-      </div>
 
-      {/* CONTENIDO */}
-      {loading && products.length === 0 ? (
-          <div className="p-10 flex justify-center text-slate-400">
-              <Loader2 className="animate-spin" size={40}/>
-          </div>
-      ) : (
-        <div className="overflow-x-auto">
-            <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-black tracking-wider border-b border-slate-200">
-                <tr>
-                <th className="px-6 py-4">Producto</th>
-                <th className="px-6 py-4 text-center">Tipo</th>
-                <th className="px-6 py-4 text-center">Variantes</th>
-                <th className="px-6 py-4 text-right">Stock Global</th>
-                <th className="px-6 py-4 text-center">Acciones</th>
-                </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-                {filteredProducts.map(product => {
-                const totalStock = product.variants.reduce((acc, v) => acc + (v.stock || 0), 0);
-                const isExpanded = expandedId === product.id;
-
-                return (
-                    <React.Fragment key={product.id}>
-                    <tr className={`hover:bg-slate-50 transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}>
-                        <td className="px-6 py-4 font-bold text-slate-700">{product.name}</td>
-                        <td className="px-6 py-4 text-center">
-                            <span className="px-2 py-1 rounded text-[10px] font-black uppercase bg-blue-100 text-blue-600">
-                                {product.type}
-                            </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                            <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold">
-                                {product.variants.length} Opciones
-                            </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                            <span className="font-black text-slate-700">
-                                {totalStock.toFixed(2)}
-                            </span>
-                        </td>
-                        <td className="px-6 py-4 text-center flex justify-center gap-2">
-                            <button 
-                                onClick={() => setExpandedId(isExpanded ? null : product.id)}
-                                className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                            >
-                                {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                            </button>
-                            <button 
-                                onClick={() => handleDelete(product.id)}
-                                className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg transition-colors"
-                            >
-                                <Trash2 size={18} />
-                            </button>
-                        </td>
+        {/* CONTENIDO */}
+        {loading && products.length === 0 ? (
+            <div className="p-10 flex justify-center text-slate-400">
+                <Loader2 className="animate-spin" size={40}/>
+            </div>
+        ) : (
+            <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-black tracking-wider border-b border-slate-200">
+                    <tr>
+                    <th className="px-6 py-4 w-1/3">Producto</th>
+                    <th className="px-6 py-4 text-center">Medidas</th>
+                    <th className="px-6 py-4 text-right">Stock Total</th>
+                    <th className="px-6 py-4 text-center">Acciones</th>
                     </tr>
-                    
-                    {/* EXPANDED ROW (DETALLE VARIANTES) */}
-                    {isExpanded && (
-                        <tr>
-                            <td colSpan={5} className="px-6 py-6 bg-slate-50 border-b border-slate-200 shadow-inner">
-                                <div className="space-y-4">
-                                    <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                        <Ruler size={14}/> Desglose de Stock
-                                    </h4>
-                                    {product.variants.map((variant, idx) => (
-                                        <div key={variant.id || idx} className="bg-white rounded-xl border border-slate-200 p-3 flex justify-between items-center shadow-sm">
-                                            <div>
-                                                <span className="font-bold text-slate-700 text-sm block">
-                                                    {variant.name}
-                                                </span>
-                                                <div className="flex gap-2 text-[10px] mt-1">
-                                                    <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">
-                                                        Venta: R$ {variant.priceSellBRL.toFixed(2)}
-                                                    </span>
-                                                    {variant.priceBuySoles > 0 && (
-                                                        <span className="text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded">
-                                                            Ref. Compra: S/ {variant.priceBuySoles.toFixed(2)}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="block font-black text-lg text-emerald-600">
-                                                    {(variant.stock || 0).toFixed(2)}
-                                                </span>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase">
-                                                    {variant.salesUnit}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {filteredGroups.map(group => {
+                    const isExpanded = expandedGroupId === group.uniqueGroupId;
+
+                    return (
+                        <React.Fragment key={group.uniqueGroupId}>
+                        {/* FILA PADRE (AGRUPADA) */}
+                        <tr className={`hover:bg-indigo-50/30 transition-colors cursor-pointer group ${isExpanded ? 'bg-indigo-50/50' : ''}`} onClick={() => setExpandedGroupId(isExpanded ? null : group.uniqueGroupId)}>
+                            <td className="px-6 py-4">
+                                <span className="font-black text-slate-700 text-sm md:text-base">{group.name}</span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${group.allVariants.length > 0 ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-500'}`}>
+                                    {group.allVariants.length} Opciones
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                                <span className="font-black text-slate-800 text-lg">
+                                    {group.totalStock.toFixed(2)}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4">
+                                <div className="flex justify-center items-center gap-2">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleOpenAddVariant(group); }}
+                                        className="bg-indigo-100 hover:bg-indigo-600 hover:text-white text-indigo-600 p-2 rounded-lg transition-all flex items-center gap-1 group/btn"
+                                        title="Agregar Medida"
+                                    >
+                                        <Plus size={16} strokeWidth={3}/>
+                                        <span className="text-[10px] font-black uppercase hidden md:inline">Medida</span>
+                                    </button>
+                                    <div className="w-px h-6 bg-slate-200 mx-2"></div>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteProduct(group.primaryDbId); }}
+                                        className="text-slate-300 hover:text-rose-500 p-2 rounded-lg transition-colors"
+                                        title="Eliminar Producto Completo"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                    <button 
+                                        className={`p-2 rounded-lg transition-colors ${isExpanded ? 'bg-slate-200 text-slate-600' : 'text-slate-400 hover:bg-slate-100'}`}
+                                    >
+                                        {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                    </button>
                                 </div>
                             </td>
                         </tr>
-                    )}
-                    </React.Fragment>
-                );
-                })}
-            </tbody>
-            </table>
+                        
+                        {/* DETALLE EXPANDIDO (VARIANTES) */}
+                        {isExpanded && (
+                            <tr>
+                                <td colSpan={4} className="px-0 py-0 border-b border-slate-200 shadow-inner bg-slate-50/50">
+                                    <div className="p-4 space-y-2">
+                                        <div className="flex items-center gap-2 mb-2 px-2">
+                                            <Ruler size={14} className="text-indigo-400"/>
+                                            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Desglose de Medidas</span>
+                                        </div>
+                                        
+                                        {group.allVariants.length === 0 ? (
+                                            <div className="text-center py-4 text-slate-400 text-xs font-bold italic">Sin variantes registradas. Usa el botón + para agregar una.</div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                {group.allVariants.map((variant, idx) => (
+                                                    <div key={idx} className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col justify-between shadow-sm relative overflow-hidden group/card hover:border-indigo-300 transition-colors">
+                                                        <div className="flex justify-between items-start mb-3">
+                                                            <span className="font-bold text-slate-700 text-sm">
+                                                                {variant.name}
+                                                            </span>
+                                                            <div className="flex items-center gap-1">
+                                                                <button 
+                                                                    onClick={() => handleOpenRestock(group, variant)}
+                                                                    className="bg-emerald-100 hover:bg-emerald-500 hover:text-white text-emerald-600 p-1.5 rounded transition-colors"
+                                                                    title="Abastecer esta medida"
+                                                                >
+                                                                    <Truck size={14}/>
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleDeleteVariant(variant.id)} 
+                                                                    className="text-slate-300 hover:text-rose-500 p-1.5 rounded transition-colors"
+                                                                    title="Eliminar Medida Individual"
+                                                                >
+                                                                    <Trash2 size={14}/>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="flex justify-between items-end">
+                                                            <div>
+                                                                <div className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Precio Venta</div>
+                                                                <div className="font-black text-emerald-500 text-lg flex items-center">
+                                                                    <span className="text-xs mr-0.5">R$</span> {variant.priceSellBRL ? variant.priceSellBRL.toFixed(2) : '0.00'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Stock</div>
+                                                                <span className="font-black text-slate-800 text-lg bg-slate-100 px-2 py-0.5 rounded-lg">
+                                                                    {(variant.stock || 0).toFixed(2)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {variant.priceBuySoles > 0 && (
+                                                            <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center">
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Costo Base (Ref.)</span>
+                                                                <span className="text-[10px] font-bold text-slate-500">S/ {variant.priceBuySoles.toFixed(2)}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
+                        </React.Fragment>
+                    );
+                    })}
+                </tbody>
+                </table>
+            </div>
+        )}
         </div>
-      )}
-    </div>
+
+        {/* MODAL CREACIÓN RÁPIDA */}
+        <QuickVariantModal 
+            isOpen={isModalOpen} 
+            onClose={() => setIsModalOpen(false)}
+            product={selectedParentProduct}
+            onSave={handleSaveVariant}
+        />
+
+        {/* MODAL DE REABASTECIMIENTO (NUEVO) */}
+        <RestockModal 
+            isOpen={isRestockOpen}
+            onClose={() => setIsRestockOpen(false)}
+            product={selectedRestockData.product}
+            variant={selectedRestockData.variant}
+            onSave={handleSaveRestock}
+        />
+    </>
   );
 };
 

@@ -54,7 +54,7 @@ const Dashboard = () => {
       }
     });
 
-    return Object.entries(data).map(([name, total]) => ({ name, total }));
+    return Object.entries(data).map(([name, total]) => ({ name, total: parseFloat(total.toFixed(2)) }));
   }, [sales]);
 
   const StatCard = ({ title, value, sub, icon: Icon, color }) => (

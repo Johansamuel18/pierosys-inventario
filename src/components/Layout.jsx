@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, PackagePlus, Truck, ShoppingCart, BarChart3, Settings, Boxes, Menu, ChevronDown, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, PackagePlus, Truck, ShoppingCart, BarChart3, Settings, Boxes, Menu, ChevronDown, ChevronUp, Database } from 'lucide-react';
 
 const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(true);
@@ -16,7 +16,7 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
   // En móvil mostramos TODOS los ítems. Usamos grid para distribuirlos.
   const mobileMenuItems = menuItems;
 
-  const activeItem = menuItems.find(i => i.id === activeTab) || menuItems[0];
+  const activeItem = menuItems.find(i => i.id === activeTab) || (activeTab === 'settings' ? {label: 'Configuración'} : menuItems[0]);
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
@@ -53,12 +53,15 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
           })}
         </nav>
 
-        {/* Desktop Tasa Cambio */}
+        {/* Desktop Settings / Tasa Cambio */}
         <div className="p-6 border-t border-slate-700 bg-slate-800">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-2">
-              <Settings size={12} /> Tasa Cambio
-            </span>
+            <button 
+                onClick={() => setActiveTab('settings')}
+                className={`text-[10px] font-bold uppercase flex items-center gap-2 hover:text-white transition-colors ${activeTab === 'settings' ? 'text-emerald-400' : 'text-slate-400'}`}
+            >
+              <Settings size={12} /> Configuración / Datos
+            </button>
           </div>
           <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-lg border border-slate-600 focus-within:border-emerald-500 transition-colors">
             <span className="text-emerald-500 font-bold text-xs">S/1 =</span>
@@ -100,15 +103,11 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
                 </div>
             </div>
             
-            {/* Mobile Rate Input (Compact) */}
-            <div className="flex items-center gap-1 bg-slate-800 px-3 py-2 rounded-lg border border-slate-600 shadow-inner">
-                <span className="text-emerald-500 font-bold text-xs">S/</span>
-                <input 
-                  type="number" 
-                  value={currentRate}
-                  onChange={(e) => onRateChange(parseFloat(e.target.value))}
-                  className="w-12 bg-transparent text-white font-bold text-sm outline-none text-center"
-                />
+            {/* Mobile Actions */}
+            <div className="flex items-center gap-2">
+                 <button onClick={() => setActiveTab('settings')} className="bg-slate-800 p-2 rounded-lg text-slate-400 border border-slate-700">
+                    <Database size={16}/>
+                 </button>
             </div>
         </header>
 

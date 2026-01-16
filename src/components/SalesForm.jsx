@@ -1,39 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ShoppingCart, Plus, Trash2, Search, Calculator, Tag, Layers, Box, AlertCircle, Banknote, Loader2, PackageSearch } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Calculator, Tag, Layers, Box, AlertCircle, Banknote, Loader2, PackageSearch, Package, Ruler } from 'lucide-react';
 
 const SalesForm = () => {
-  const [variantsList, setVariantsList] = useState([]);
+  // --- DATA STATES ---
+  const [allProducts, setAllProducts] = useState([]); // Raw Data de Supabase
   const [loading, setLoading] = useState(true);
-  
-  const [selectedVariantId, setSelectedVariantId] = useState('');
-  
-  // States para calculadora y lógica
+
+  // --- SELECTION STATES (CASCADA) ---
+  const [selectedProductName, setSelectedProductName] = useState(''); // Paso 1: Familia (String)
+  const [selectedVariantId, setSelectedVariantId] = useState('');     // Paso 2: ID Único
+
+  // --- CALCULATOR STATES ---
   const [unitPriceBRL, setUnitPriceBRL] = useState(0);
   const [stockAvailable, setStockAvailable] = useState(0);
   const [quantityInput, setQuantityInput] = useState('');
   const [totalInput, setTotalInput] = useState(''); 
 
+  // --- CART STATES ---
   const [cart, setCart] = useState([]);
   const [globalDiscount, setGlobalDiscount] = useState('');
 
-  // --- 1. CARGA INICIAL ROBUSTA ---
+  // Helper de Redondeo
+  const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
+
+  // --- 1. CARGA INICIAL ---
   const loadData = async () => {
     try {
       setLoading(true);
-      const products = await InventoryService.getProducts();
-      
-      // Aplanado seguro con conversión de tipos
-      const flatList = (products || []).flatMap(p => 
-          (p.variants || []).map(v => ({
-              id: String(v.id), // Forzamos String para evitar bugs de select
-              parentId: p.id,
-              fullName: `${p.name} - ${v.name}`,
-              price: parseFloat(v.priceSellBRL || 0),
-              stock: parseFloat(v.stock || 0)
-          }))
-      );
-      setVariantsList(flatList);
+      const data = await InventoryService.getProducts();
+      setAllProducts(data || []);
     } catch (err) {
       console.error(err);
       alert("Error cargando inventario");
@@ -46,27 +42,84 @@ const SalesForm = () => {
     loadData();
   }, []);
 
-  // --- 2. MANEJO DE SELECCIÓN ---
-  const handleVariantChange = (e) => {
-    const newId = e.target.value;
-    setSelectedVariantId(newId);
+  // --- 2. LÓGICA DE AGRUPACIÓN (PRIMER SELECTOR) ---
+  const uniqueProductNames = useMemo(() => {
+      const names = new Set();
+      allProducts.forEach(p => {
+          if (p.variants && p.variants.length > 0) {
+              names.add(p.name.trim().toUpperCase());
+          }
+      });
+      return Array.from(names).sort();
+  }, [allProducts]);
 
-    const item = variantsList.find(v => v.id === newId);
-    if (item) {
-        setUnitPriceBRL(item.price);
-        setStockAvailable(item.stock);
-        setQuantityInput('1');
-        setTotalInput(item.price.toFixed(2));
-    } else {
-        setUnitPriceBRL(0);
-        setStockAvailable(0);
-        setQuantityInput('');
-        setTotalInput('');
-    }
+  // --- 3. LÓGICA DE FILTRADO (SEGUNDO SELECTOR) ---
+  const availableVariants = useMemo(() => {
+      if (!selectedProductName) return [];
+
+      const variants = [];
+      const matchingProducts = allProducts.filter(p => p.name.trim().toUpperCase() === selectedProductName);
+      
+      matchingProducts.forEach(p => {
+          p.variants.forEach(v => {
+              variants.push({
+                  id: String(v.id),
+                  parentId: p.id,
+                  name: v.name, // Nombre de la medida (ej: "0.22 mm")
+                  fullName: `${p.name} ${v.name}`,
+                  price: parseFloat(v.priceSellBRL || 0),
+                  stock: parseFloat(v.stock || 0)
+              });
+          });
+      });
+
+      return variants.sort((a, b) => a.name.localeCompare(b.name));
+  }, [selectedProductName, allProducts]);
+
+  // --- 4. HANDLERS DE CAMBIO ---
+  const handleNameChange = (e) => {
+      const newName = e.target.value;
+      setSelectedProductName(newName);
+      
+      setSelectedVariantId('');
+      setUnitPriceBRL(0);
+      setStockAvailable(0);
+      setQuantityInput('');
+      setTotalInput('');
+
+      const matching = allProducts.filter(p => p.name.trim().toUpperCase() === newName);
+      let totalVars = 0;
+      let targetVar = null;
+      
+      matching.forEach(p => {
+         if(p.variants) {
+             totalVars += p.variants.length;
+             if(p.variants.length > 0) targetVar = p.variants[0];
+         }
+      });
+
+      if (totalVars === 1 && targetVar) {
+          setTimeout(() => applyVariantSelection(String(targetVar.id), targetVar.priceSellBRL, targetVar.stock), 50);
+      }
   };
 
-  // Helper para buscar item actual
-  const selectedItem = variantsList.find(v => v.id === selectedVariantId);
+  const handleVariantChange = (e) => {
+      const vId = e.target.value;
+      const variant = availableVariants.find(v => v.id === vId);
+      if (variant) {
+          applyVariantSelection(vId, variant.price, variant.stock);
+      }
+  };
+
+  const applyVariantSelection = (id, price, stock) => {
+      setSelectedVariantId(id);
+      setUnitPriceBRL(parseFloat(price) || 0);
+      setStockAvailable(parseFloat(stock) || 0);
+      setQuantityInput('1');
+      setTotalInput((parseFloat(price) || 0).toFixed(2));
+  };
+
+  const selectedItem = availableVariants.find(v => v.id === selectedVariantId);
 
   // --- CALCULADORA ---
   const handleQuantityChange = (val) => {
@@ -108,6 +161,8 @@ const SalesForm = () => {
       return alert(`Stock insuficiente. Disponible: ${stockAvailable}`);
     }
 
+    const calculatedSubtotal = roundMoney(qtyToAdd * unitPriceBRL);
+
     const newItem = {
       tempId: Date.now().toString() + Math.random(),
       id: selectedItem.id,
@@ -115,14 +170,13 @@ const SalesForm = () => {
       name: selectedItem.fullName,
       quantity: qtyToAdd,
       unitPriceBRL: unitPriceBRL,
-      subtotalBRL: qtyToAdd * unitPriceBRL
+      subtotalBRL: calculatedSubtotal
     };
 
     setCart([...cart, newItem]);
     setQuantityInput('');
     setTotalInput('');
     
-    // Resetear selección para agilizar siguiente venta
     setSelectedVariantId('');
     setUnitPriceBRL(0);
   };
@@ -132,9 +186,9 @@ const SalesForm = () => {
   };
 
   // --- CONFIRMAR VENTA ---
-  const subtotal = cart.reduce((acc, item) => acc + item.subtotalBRL, 0);
+  const subtotal = roundMoney(cart.reduce((acc, item) => acc + item.subtotalBRL, 0));
   const discount = parseFloat(globalDiscount) || 0;
-  const netTotal = subtotal - discount;
+  const netTotal = roundMoney(subtotal - discount);
   const isDiscountInvalid = discount > subtotal;
 
   const handleConfirmSale = async () => {
@@ -144,11 +198,10 @@ const SalesForm = () => {
     try {
       setLoading(true);
       
-      // Procesar secuencialmente para evitar bloqueos de DB si hay muchos items
       for (const item of cart) {
         const weight = item.subtotalBRL / subtotal;
         const discountShare = discount * weight;
-        const effectiveTotalRevenue = item.subtotalBRL - discountShare;
+        const effectiveTotalRevenue = roundMoney(item.subtotalBRL - discountShare);
 
         await InventoryService.processSale(
           item.parentId,
@@ -162,15 +215,15 @@ const SalesForm = () => {
       setCart([]);
       setGlobalDiscount('');
       setQuantityInput('');
+      setSelectedProductName('');
       setSelectedVariantId('');
       
-      // Recargar datos frescos
       await loadData();
 
     } catch (err) {
       console.error(err);
       alert("Error al procesar venta: " + err.message);
-      setLoading(false); // Asegurar que loading se apague si falla
+      setLoading(false);
     }
   };
 
@@ -178,23 +231,21 @@ const SalesForm = () => {
   const remainingStock = stockAvailable - currentInCart;
   const isInputInsufficient = parseFloat(quantityInput || '0') > remainingStock;
 
-  if (loading && variantsList.length === 0) {
+  if (loading && allProducts.length === 0) {
     return <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4"><Loader2 className="animate-spin text-indigo-500" size={48}/><p className="font-bold uppercase tracking-widest text-sm">Sincronizando Inventario...</p></div>;
   }
 
-  // Empty State
-  if (!loading && variantsList.length === 0) {
+  if (!loading && allProducts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-slate-400">
         <PackageSearch size={64} className="mb-4 opacity-20"/>
         <h3 className="text-xl font-black uppercase tracking-widest text-slate-600">Sin Productos</h3>
-        <p className="max-w-md text-center mt-2">No se encontraron productos disponibles para venta. Crea productos y abastécelos primero.</p>
+        <p className="max-w-md text-center mt-2">No se encontraron productos disponibles. Crea productos y abastécelos primero.</p>
       </div>
     );
   }
 
   return (
-    // CAMBIO CRÍTICO AQUÍ: h-auto en móvil, altura fija en desktop.
     <div className="max-w-7xl mx-auto h-auto md:h-[calc(100vh-8rem)]">
         
         <div className="flex items-center gap-4 mb-6">
@@ -210,31 +261,54 @@ const SalesForm = () => {
             
             {/* COLUMNA IZQUIERDA: Selector y Calculadora */}
             <div className="lg:col-span-5 flex flex-col gap-6 h-auto md:h-full">
-                <div className="bg-white rounded-3xl shadow-xl p-6 border border-slate-100">
-                     <div className="space-y-4">
-                        <div>
-                            <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1">Buscar Ítem (Variante)</label>
-                            <div className="relative">
-                                <select 
-                                    value={selectedVariantId}
-                                    onChange={handleVariantChange}
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-indigo-500 appearance-none"
-                                >
-                                    <option value="">-- Seleccione --</option>
-                                    {variantsList.map(v => (
-                                      <option key={v.id} value={v.id}>
-                                        {v.fullName} — R$ {v.price.toFixed(2)}
-                                      </option>
-                                    ))}
-                                </select>
-                                <Search className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" size={18}/>
-                            </div>
-                        </div>
+                
+                {/* SELECTOR EN CASCADA */}
+                <div className="bg-white rounded-3xl shadow-xl p-6 border border-slate-100 space-y-4">
+                     
+                     {/* PASO 1: FAMILIA */}
+                     <div className="relative">
+                        <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                            <Package size={12}/> 1. Producto / Familia
+                        </label>
+                        <select 
+                            value={selectedProductName}
+                            onChange={handleNameChange}
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-colors appearance-none text-sm md:text-base"
+                        >
+                            <option value="">-- Seleccionar --</option>
+                            {uniqueProductNames.map(name => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-4 top-8 pointer-events-none text-slate-400"><Search size={16}/></div>
                      </div>
+
+                     {/* PASO 2: MEDIDA */}
+                     <div className={`relative transition-opacity duration-300 ${!selectedProductName ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                            <Ruler size={12}/> 2. Medida / Variedad
+                        </label>
+                        <select 
+                            value={selectedVariantId}
+                            onChange={handleVariantChange}
+                            disabled={!selectedProductName}
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-colors appearance-none text-sm md:text-base"
+                        >
+                            <option value="">{availableVariants.length > 0 ? '-- Seleccionar Medida --' : '-- Sin Variantes --'}</option>
+                            {availableVariants.map(v => (
+                              <option key={v.id} value={v.id}>
+                                {v.name} — R$ {v.price.toFixed(2)}
+                              </option>
+                            ))}
+                        </select>
+                        <div className="absolute right-4 top-8 pointer-events-none text-slate-400"><Layers size={16}/></div>
+                     </div>
+
                 </div>
 
+                {/* VISOR DE STOCK */}
                 {selectedItem && (
-                    <div className={`rounded-2xl p-6 border-l-4 shadow-lg flex justify-between items-center transition-all ${
+                    <div className={`rounded-2xl p-6 border-l-4 shadow-lg flex justify-between items-center transition-all animate-in slide-in-from-top-2 ${
                         remainingStock <= 0 ? 'bg-rose-50 border-rose-500' : 'bg-emerald-50 border-emerald-500'
                     }`}>
                         <div>
@@ -254,7 +328,8 @@ const SalesForm = () => {
                     </div>
                 )}
 
-                <div className="bg-slate-900 rounded-[2rem] p-6 shadow-2xl flex-1 flex flex-col justify-center relative overflow-hidden min-h-[300px] md:min-h-0">
+                {/* CALCULADORA / INPUT */}
+                <div className={`bg-slate-900 rounded-[2rem] p-6 shadow-2xl flex-1 flex flex-col justify-center relative overflow-hidden min-h-[300px] md:min-h-0 transition-all ${!selectedItem ? 'opacity-90 grayscale' : ''}`}>
                      <div className="absolute -right-10 -top-10 w-40 h-40 bg-indigo-500 rounded-full blur-3xl opacity-20"></div>
 
                      {loading && <div className="absolute inset-0 bg-slate-900/80 z-20 flex items-center justify-center"><Loader2 className="animate-spin text-white" size={32}/></div>}

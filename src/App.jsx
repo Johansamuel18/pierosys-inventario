@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import Layout from './components/Layout.jsx'; // Nuevo Componente
+import Layout from './components/Layout.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ProductForm from './components/ProductForm.jsx';
 import SupplyForm from './components/SupplyForm.jsx';
 import SalesForm from './components/SalesForm.jsx';
 import InventoryList from './components/InventoryList.jsx';
 import Reports from './components/Reports.jsx';
+import DataImporter from './components/DataImporter.jsx'; // Nuevo Componente
 import { InventoryService } from './services/inventoryService.js';
 
 const App = () => {
@@ -30,6 +31,7 @@ const App = () => {
       case 'sales': return <SalesForm />;
       case 'inventory': return <InventoryList />;
       case 'reports': return <Reports />;
+      case 'settings': return <DataImporter />; // Nueva Pestaña
       default: return <Dashboard />;
     }
   };

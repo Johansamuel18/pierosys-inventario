@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { Save, Layers, TrendingUp, Package, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Save, Layers, TrendingUp, Package, Loader2, Plus, Trash2, Disc, Box } from 'lucide-react';
 
 const ProductForm = () => {
   // --- Global State ---
@@ -12,11 +12,12 @@ const ProductForm = () => {
   const [measureType, setMeasureType] = useState('UNIT'); // UI: UNIT, KILO, METRO
 
   // --- Variants State ---
+  // presentation: 'PACK' (Caja/Rollo) | 'BULK' (Granel/Suelto)
   const [variants, setVariants] = useState([
     {
       tempId: Date.now(),
       name: '',
-      presentation: 'BOX',
+      presentation: 'PACK', 
       contentPerBulto: '',
       qtyBultos: '',
       costInputSoles: '',
@@ -36,7 +37,7 @@ const ProductForm = () => {
       {
         tempId: Date.now() + Math.random(),
         name: '',
-        presentation: 'BOX',
+        presentation: 'PACK',
         contentPerBulto: '',
         qtyBultos: '',
         costInputSoles: '',
@@ -72,13 +73,13 @@ const ProductForm = () => {
         totalStock = parseFloat(v.initialStockUnit) || 0;
     } else {
         // KILO o METRO
-        if (v.presentation === 'BOX') {
+        if (v.presentation === 'PACK') {
             const content = parseFloat(v.contentPerBulto) || 1;
             unitCostSoles = content > 0 ? (costSoles / content) : 0;
             const qty = parseFloat(v.qtyBultos) || 0;
             totalStock = qty * content;
         } else {
-            // BULK
+            // BULK (Granel)
             unitCostSoles = costSoles; 
             totalStock = parseFloat(v.qtyBultos) || 0;
         }
@@ -94,6 +95,12 @@ const ProductForm = () => {
     return { unitCostSoles, calculatedCostBRL, totalStock, margin };
   };
 
+  // Helpers de UI para etiquetas dinámicas
+  const getPackLabel = () => measureType === 'METRO' ? 'Por Rollo' : 'Por Caja';
+  const getContentLabel = () => measureType === 'METRO' ? 'Metros x Rollo' : 'Contenido x Caja';
+  const getCostLabel = () => measureType === 'METRO' ? 'Costo Rollo (S/)' : 'Costo Caja (S/)';
+  const getStockLabel = () => measureType === 'METRO' ? 'Stock Inicial (Rollos)' : 'Stock Inicial (Cajas)';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!productName.trim()) return alert("Falta nombre del producto");
@@ -103,10 +110,16 @@ const ProductForm = () => {
         const variantsPayload = variants.map(v => {
             const math = calculateVariantMath(v);
             
-            // Determinar unidad de venta para DB basado en measureType
+            // Determinar unidad de venta para DB
             let salesUnitStr = 'UND';
             if (measureType === 'KILO') salesUnitStr = 'KG';
             if (measureType === 'METRO') salesUnitStr = 'MT';
+
+            // Determinar unidad de compra (PACK -> CAJA o ROLLO)
+            let purchaseUnitStr = 'UNIDAD';
+            if (v.presentation === 'PACK') {
+                purchaseUnitStr = measureType === 'METRO' ? 'ROLLO' : 'CAJA';
+            }
 
             return {
                 name: v.name || 'Estándar',
@@ -115,13 +128,13 @@ const ProductForm = () => {
                 stock_quantity: math.totalStock,
                 sales_unit: salesUnitStr, 
                 conversion_factor: parseFloat(v.contentPerBulto) || 1,
-                purchase_unit: v.presentation === 'BOX' ? 'CAJA' : 'UNIDAD',
+                purchase_unit: purchaseUnitStr,
             };
         });
 
         const fullProduct = {
             name: productName,
-            type: 'producto', // Hardcoded para cumplir check constraint y eliminar input de UI
+            type: 'producto',
             variants: variantsPayload
         };
 
@@ -131,7 +144,7 @@ const ProductForm = () => {
         
         // Reset
         setProductName('');
-        setVariants([{ tempId: Date.now(), name: '', presentation: 'BOX', costInputSoles: '', sellingPriceBRL: '' }]);
+        setVariants([{ tempId: Date.now(), name: '', presentation: 'PACK', costInputSoles: '', sellingPriceBRL: '' }]);
 
     } catch (error) {
         console.error(error);
@@ -165,7 +178,6 @@ const ProductForm = () => {
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-                 {/* Nombre ocupa más espacio ahora (col-span-8) */}
                  <div className="md:col-span-8">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
                         Nombre del Producto
@@ -174,12 +186,11 @@ const ProductForm = () => {
                         type="text" 
                         value={productName}
                         onChange={e => setProductName(e.target.value)}
-                        placeholder="EJ. CLAVO DE ACERO 2 PULGADAS"
+                        placeholder="EJ. LONA PLÁSTICA / CLAVOS"
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-4 font-black text-xl text-slate-700 focus:border-indigo-500 outline-none uppercase"
                     />
                 </div>
 
-                {/* Unidad de medida col-span-4 */}
                 <div className="md:col-span-4">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
                         Tipo de Unidad
@@ -193,7 +204,7 @@ const ProductForm = () => {
                                 className={`flex-1 h-full rounded-lg text-xs font-black uppercase transition-all ${
                                     measureType === t
                                     ? 'bg-white text-indigo-600 shadow-md' 
-                                    : 'text-slate-500'
+                                    : 'text-slate-500 hover:text-slate-700'
                                 }`}
                             >
                                 {t === 'UNIT' ? 'Unidad' : t}
@@ -222,7 +233,7 @@ const ProductForm = () => {
                                     type="text" 
                                     value={variant.name}
                                     onChange={e => updateVariant(index, 'name', e.target.value)}
-                                    placeholder={measureType === 'UNIT' ? "Ej. Caja Roja / Estándar" : "Ej. 1 Pulgada"}
+                                    placeholder={measureType === 'UNIT' ? "Ej. Estándar" : (measureType === 'METRO' ? "Ej. Calibre 20" : "Ej. 1 Pulgada")}
                                     className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-indigo-500 outline-none text-sm"
                                 />
                             </div>
@@ -231,16 +242,18 @@ const ProductForm = () => {
                                 <div className="flex bg-white rounded-lg p-1 border border-slate-200">
                                     <button
                                         type="button"
-                                        onClick={() => updateVariant(index, 'presentation', 'BOX')}
-                                        className={`px-3 py-1 rounded text-[10px] font-black uppercase ${variant.presentation === 'BOX' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`}
+                                        onClick={() => updateVariant(index, 'presentation', 'PACK')}
+                                        className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-1 transition-all ${variant.presentation === 'PACK' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`}
                                     >
-                                        Por Caja
+                                        {measureType === 'METRO' ? <Disc size={12}/> : <Box size={12}/>}
+                                        {getPackLabel()}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => updateVariant(index, 'presentation', 'BULK')}
-                                        className={`px-3 py-1 rounded text-[10px] font-black uppercase ${variant.presentation === 'BULK' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`}
+                                        className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase flex items-center gap-1 transition-all ${variant.presentation === 'BULK' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`}
                                     >
+                                        <Layers size={12}/>
                                         Granel
                                     </button>
                                 </div>
@@ -265,18 +278,18 @@ const ProductForm = () => {
                                     </>
                                 ) : (
                                     <>
-                                        {variant.presentation === 'BOX' ? (
+                                        {variant.presentation === 'PACK' ? (
                                             <>
                                                 <div>
-                                                    <label className="label-tiny">Contenido x Caja</label>
-                                                    <input type="number" placeholder="Ej. 20" value={variant.contentPerBulto} onChange={e => updateVariant(index, 'contentPerBulto', e.target.value)} className="input-compact" />
+                                                    <label className="label-tiny">{getContentLabel()}</label>
+                                                    <input type="number" placeholder={measureType === 'METRO' ? "Ej. 50" : "Ej. 20"} value={variant.contentPerBulto} onChange={e => updateVariant(index, 'contentPerBulto', e.target.value)} className="input-compact" />
                                                 </div>
                                                 <div>
-                                                    <label className="label-tiny">Costo Caja (Soles)</label>
+                                                    <label className="label-tiny">{getCostLabel()}</label>
                                                     <input type="number" placeholder="Ej. 100" value={variant.costInputSoles} onChange={e => updateVariant(index, 'costInputSoles', e.target.value)} className="input-compact" />
                                                 </div>
                                                 <div className="sm:col-span-2">
-                                                    <label className="label-tiny">Stock Inicial (Cajas)</label>
+                                                    <label className="label-tiny">{getStockLabel()}</label>
                                                     <input type="number" value={variant.qtyBultos} onChange={e => updateVariant(index, 'qtyBultos', e.target.value)} className="input-compact" />
                                                 </div>
                                             </>
