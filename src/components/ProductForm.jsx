@@ -56,7 +56,9 @@ const ProductForm = () => {
 
   const updateVariant = (index, field, value) => {
     const newVars = [...variants];
-    newVars[index] = { ...newVars[index], [field]: value };
+    // Si editamos el nombre, forzamos mayúsculas
+    const val = field === 'name' ? value.toUpperCase() : value;
+    newVars[index] = { ...newVars[index], [field]: val };
     setVariants(newVars);
   };
 
@@ -122,7 +124,7 @@ const ProductForm = () => {
             }
 
             return {
-                name: v.name || 'Estándar',
+                name: (v.name || 'Estándar').toUpperCase(), // Forzar Mayusc
                 price_sell_brl: parseFloat(v.sellingPriceBRL) || 0,
                 price_buy_soles: math.unitCostSoles, 
                 stock_quantity: math.totalStock,
@@ -133,7 +135,7 @@ const ProductForm = () => {
         });
 
         const fullProduct = {
-            name: productName,
+            name: productName.toUpperCase().trim(), // Forzar Mayusc
             type: 'producto',
             variants: variantsPayload
         };
@@ -185,7 +187,7 @@ const ProductForm = () => {
                     <input 
                         type="text" 
                         value={productName}
-                        onChange={e => setProductName(e.target.value)}
+                        onChange={e => setProductName(e.target.value.toUpperCase())} // FORCE UPPERCASE
                         placeholder="EJ. LONA PLÁSTICA / CLAVOS"
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-4 font-black text-xl text-slate-700 focus:border-indigo-500 outline-none uppercase"
                     />
@@ -234,7 +236,7 @@ const ProductForm = () => {
                                     value={variant.name}
                                     onChange={e => updateVariant(index, 'name', e.target.value)}
                                     placeholder={measureType === 'UNIT' ? "Ej. Estándar" : (measureType === 'METRO' ? "Ej. Calibre 20" : "Ej. 1 Pulgada")}
-                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-indigo-500 outline-none text-sm"
+                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-indigo-500 outline-none text-sm uppercase"
                                 />
                             </div>
 

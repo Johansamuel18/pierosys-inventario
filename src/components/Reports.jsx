@@ -8,6 +8,9 @@ const Reports = () => {
   const [loading, setLoading] = useState(true);
   const [filterDate, setFilterDate] = useState('all');
 
+  // Helper para mostrar números limpios (3.000 -> 3)
+  const formatQty = (num) => Number(parseFloat(num).toFixed(3));
+
   useEffect(() => {
     const loadData = async () => {
         setLoading(true);
@@ -34,7 +37,7 @@ const Reports = () => {
         Fecha: new Date(s.timestamp).toLocaleDateString(),
         Producto: s.productName,
         Variante: s.variantName || '-',
-        Cantidad: s.quantity,
+        Cantidad: formatQty(s.quantity),
         'Venta Total (R$)': s.salePriceTotalBRL,
         'Costo Histórico (R$)': s.historicalCostTotalBRL,
         'Ganancia Neta (R$)': s.grossProfitBRL,
@@ -100,7 +103,7 @@ const Reports = () => {
                   </td>
                   <td className="px-6 py-4 font-bold text-slate-700">{sale.productName}</td>
                   <td className="px-6 py-4 text-xs font-bold text-indigo-600 uppercase">{sale.variantName || '-'}</td>
-                  <td className="px-6 py-4 text-right text-slate-600">{sale.quantity.toFixed(3)}</td>
+                  <td className="px-6 py-4 text-right text-slate-600 font-bold">{formatQty(sale.quantity)}</td>
                   <td className="px-6 py-4 text-right font-black text-slate-800">
                     R$ {(sale.salePriceTotalBRL || 0).toFixed(2)}
                   </td>

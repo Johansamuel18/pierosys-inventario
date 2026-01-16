@@ -23,6 +23,17 @@ const SalesForm = () => {
 
   // Helper de Redondeo
   const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
+  
+  // Helper para mostrar números limpios (3.000 -> 3, 2.500 -> 2.5)
+  const formatQty = (num) => Number(parseFloat(num).toFixed(3));
+
+  // Helper para pluralizar etiquetas
+  const getUnitLabel = (unitType, qty) => {
+      const type = (unitType || 'UND').toUpperCase();
+      if (type === 'KG' || type === 'KILO') return qty === 1 ? 'Kilo' : 'Kilos';
+      if (type === 'MT' || type === 'METRO') return qty === 1 ? 'Metro' : 'Metros';
+      return qty === 1 ? 'Unidad' : 'Unidades';
+  };
 
   // --- 1. CARGA INICIAL ---
   const loadData = async () => {
@@ -68,7 +79,8 @@ const SalesForm = () => {
                   name: v.name, // Nombre de la medida (ej: "0.22 mm")
                   fullName: `${p.name} ${v.name}`,
                   price: parseFloat(v.priceSellBRL || 0),
-                  stock: parseFloat(v.stock || 0)
+                  stock: parseFloat(v.stock || 0),
+                  salesUnit: v.salesUnit // Importante para la etiqueta (KG, MT, UND)
               });
           });
       });
@@ -173,7 +185,8 @@ const SalesForm = () => {
       name: selectedItem.fullName,
       quantity: qtyToAdd,
       unitPriceBRL: unitPriceBRL,
-      subtotalBRL: calculatedSubtotal
+      subtotalBRL: calculatedSubtotal,
+      unitLabel: selectedItem.salesUnit // Guardamos la unidad (KG/MT/UND)
     };
 
     setCart([...cart, newItem]);
@@ -346,15 +359,17 @@ const SalesForm = () => {
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 block mb-1">Disponible</span>
                             <div className="flex items-baseline gap-1">
                                 <span className={`text-3xl font-black ${remainingStock <= 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                    {remainingStock.toFixed(2)}
+                                    {formatQty(remainingStock)}
                                 </span>
-                                <span className="text-xs font-bold text-slate-400 uppercase">Unid.</span>
+                                <span className="text-xs font-bold text-slate-400 uppercase">
+                                    {getUnitLabel(selectedItem.salesUnit, remainingStock)}
+                                </span>
                             </div>
                         </div>
                         {currentInCart > 0 && (
                             <div className="text-right">
                                 <span className="block text-[9px] font-bold text-slate-400 uppercase">En Carrito</span>
-                                <span className="text-lg font-bold text-indigo-600">{currentInCart.toFixed(2)}</span>
+                                <span className="text-lg font-bold text-indigo-600">{formatQty(currentInCart)}</span>
                             </div>
                         )}
                     </div>
@@ -375,8 +390,8 @@ const SalesForm = () => {
                             <span className="bg-white/10 px-2 py-1 rounded text-white">Unit: R$ {unitPriceBRL.toFixed(2)}</span>
                         </div>
                         
-                        {/* Input Cantidad Gigante */}
-                        <div className="flex items-center gap-4">
+                        {/* Input Cantidad Gigante - AÑADIDO MB-8 para separar de precio */}
+                        <div className="flex items-center gap-4 mb-8">
                              <input 
                                 type="number"
                                 value={quantityInput}
@@ -454,7 +469,10 @@ const SalesForm = () => {
                                         <div>
                                             <p className="font-bold text-slate-800 text-sm leading-tight">{item.name}</p>
                                             <p className="text-xs text-slate-500 font-medium mt-1 flex items-center gap-1">
-                                                <span className="bg-slate-100 px-1.5 rounded text-slate-600 font-bold">{item.quantity.toFixed(3)} Unid.</span>
+                                                {/* FORMATO ACTUALIZADO: Cantidad Limpia y Etiqueta Dinámica */}
+                                                <span className="bg-slate-100 px-1.5 rounded text-slate-600 font-bold">
+                                                    {formatQty(item.quantity)} {getUnitLabel(item.unitLabel, item.quantity)}
+                                                </span>
                                                 <span>x</span>
                                                 <span>R$ {item.unitPriceBRL.toFixed(2)}</span>
                                             </p>

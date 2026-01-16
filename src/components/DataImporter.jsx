@@ -170,17 +170,21 @@ const DataImporter = () => {
         const priceSell = parseFloat(row['Venta (R$)'] || row['Venta'] || row['Precio Venta'] || 0);
 
         if (!name) return;
+        
+        // --- NORMALIZACIÓN MAYUSCULAS ---
+        const nameUpper = name.toString().toUpperCase().trim();
+        const measureUpper = measure.toString().toUpperCase().trim();
 
-        if (!grouped[name]) {
-            grouped[name] = {
-                name: name.toUpperCase().trim(),
+        if (!grouped[nameUpper]) {
+            grouped[nameUpper] = {
+                name: nameUpper,
                 type: 'producto',
                 variants: []
             };
         }
 
-        grouped[name].variants.push({
-            name: String(measure),
+        grouped[nameUpper].variants.push({
+            name: String(measureUpper),
             stock_quantity: stock,
             price_buy_soles: priceBuy,
             price_sell_brl: priceSell,

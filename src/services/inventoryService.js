@@ -41,11 +41,11 @@ export const InventoryService = {
         
         return data.map(p => ({
             id: p.id,
-            name: p.name,
+            name: p.name.toUpperCase(), // FORZAR VISUALIZACIÓN MAYUSCULA
             type: p.type,
             variants: (p.variants || []).map(v => ({
                 id: v.id,
-                name: v.name,
+                name: v.name.toUpperCase(), // FORZAR VISUALIZACIÓN MAYUSCULA
                 productId: v.product_id,
                 purchaseUnit: v.purchase_unit,
                 salesUnit: v.sales_unit,
@@ -102,7 +102,7 @@ export const InventoryService = {
         const { data: productResult, error: prodError } = await supabase
             .from('products')
             .insert({
-                name: productData.name,
+                name: productData.name.toUpperCase().trim(), // SIEMPRE MAYUSCULA
                 type: productData.type
             })
             .select()
@@ -112,7 +112,7 @@ export const InventoryService = {
 
         const variantsPayload = productData.variants.map(v => ({
             product_id: productResult.id,
-            name: v.name,
+            name: v.name.toUpperCase().trim(), // SIEMPRE MAYUSCULA
             purchase_unit: v.purchase_unit,
             sales_unit: v.sales_unit,
             conversion_factor: v.conversion_factor,
@@ -134,6 +134,23 @@ export const InventoryService = {
     }
   },
 
+  // --- ACTUALIZAR NOMBRE PRODUCTO (RENOMBRAR) ---
+  updateProductName: async (productId, newName) => {
+      try {
+          const finalName = newName.toUpperCase().trim();
+          const { error } = await supabase
+            .from('products')
+            .update({ name: finalName })
+            .eq('id', productId);
+          
+          if (error) throw error;
+          return true;
+      } catch (e) {
+          console.error("Error updating product name:", e);
+          throw e;
+      }
+  },
+
   // --- AGREGAR VARIANTE A PRODUCTO EXISTENTE ---
   addVariant: async (productId, variantData) => {
       try {
@@ -141,7 +158,7 @@ export const InventoryService = {
             .from('variants')
             .insert({
                 product_id: productId,
-                name: variantData.name,
+                name: variantData.name.toUpperCase().trim(),
                 price_buy_soles: variantData.price_buy_soles,
                 price_sell_brl: variantData.price_sell_brl,
                 stock_quantity: variantData.stock_quantity,
@@ -161,13 +178,15 @@ export const InventoryService = {
 
   // --- IMPORTACIÓN MASIVA INVENTARIO ---
   importProductBatch: async (groupedProduct) => {
+    const productNameUpper = groupedProduct.name.toUpperCase().trim();
+
     // 1. Verificar si el producto ya existe
     let productId = null;
     
     const { data: existing } = await supabase
         .from('products')
         .select('id')
-        .ilike('name', groupedProduct.name)
+        .ilike('name', productNameUpper) // Comparación insensible a mayusculas pero el nombre ya va en mayus
         .maybeSingle();
 
     if (existing) {
@@ -193,7 +212,7 @@ export const InventoryService = {
              } else {
                  await supabase.from('variants').insert({
                     product_id: productId,
-                    name: vNew.name,
+                    name: vNew.name.toUpperCase().trim(),
                     purchase_unit: vNew.purchase_unit,
                     sales_unit: vNew.sales_unit,
                     conversion_factor: vNew.conversion_factor,
@@ -210,7 +229,7 @@ export const InventoryService = {
         const { data: newProd, error } = await supabase
             .from('products')
             .insert({ 
-                name: groupedProduct.name, 
+                name: productNameUpper, 
                 type: groupedProduct.type 
             })
             .select()
@@ -220,7 +239,7 @@ export const InventoryService = {
 
         const variantsPayload = groupedProduct.variants.map(v => ({
             product_id: productId,
-            name: v.name,
+            name: v.name.toUpperCase().trim(),
             purchase_unit: v.purchase_unit,
             sales_unit: v.sales_unit,
             conversion_factor: v.conversion_factor,
@@ -347,15 +366,12 @@ export const InventoryService = {
     }
   },
 
-  // --- BORRAR VARIANTE INDIVIDUAL (NUEVO) ---
+  // --- BORRAR VARIANTE INDIVIDUAL ---
   deleteVariant: async (variantId) => {
       try {
-        // Primero borramos ventas asociadas para evitar errores de llave foránea (si no hay cascade)
-        // o para mantener la base limpia.
         const { error: salesError } = await supabase.from('sale_items').delete().eq('variant_id', variantId);
         if (salesError) console.warn("Error limpiando ventas de la variante:", salesError.message);
 
-        // Borrar variante
         const { error } = await supabase.from('variants').delete().eq('id', variantId);
         if (error) throw error;
         
@@ -399,7 +415,6 @@ export const InventoryService = {
     // 3. Objeto de actualización
     const updatePayload = {
         stock_quantity: finalStock,
-        // Actualizamos costo si viene > 0, sino mantenemos el anterior (seguridad)
         price_buy_soles: newCostSoles > 0 ? newCostSoles : currentVariant.price_buy_soles
     };
 
@@ -498,8 +513,8 @@ export const InventoryService = {
             return {
                 id: item.id,
                 timestamp: new Date(item.sales?.created_at).getTime(),
-                productName: item.variants?.products?.name || '?',
-                variantName: item.variants?.name || '-',
+                productName: (item.variants?.products?.name || '?').toUpperCase(), // Forzar Mayuscula
+                variantName: (item.variants?.name || '-').toUpperCase(), // Forzar Mayuscula
                 quantity: parseFloat(item.quantity),
                 salePriceTotalBRL: revenue,
                 historicalCostTotalBRL: cost,

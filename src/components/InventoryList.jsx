@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ChevronDown, ChevronUp, Package, Trash2, Ruler, RefreshCw, AlertOctagon, Plus, X, Save, Loader2, Calculator, Info, Box, Disc, Layers, Archive, Truck, DollarSign, Lock, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronUp, Package, Trash2, Ruler, RefreshCw, AlertOctagon, Plus, X, Save, Loader2, Calculator, Info, Box, Disc, Layers, Archive, Truck, DollarSign, Lock, Pencil, Edit3 } from 'lucide-react';
 
 const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
 
@@ -86,7 +86,7 @@ const QuickVariantModal = ({ isOpen, onClose, product, onSave }) => {
         setLoading(true);
         try {
             await onSave({
-                name: variantName,
+                name: variantName.toUpperCase(),
                 price_buy_soles: math.unitCostSoles, 
                 price_sell_brl: roundMoney(salePriceBRL),
                 stock_quantity: math.totalStockUnits,
@@ -125,7 +125,7 @@ const QuickVariantModal = ({ isOpen, onClose, product, onSave }) => {
                             type="text" 
                             placeholder="Ej. Caja Roja / 2 Pulgadas" 
                             value={variantName}
-                            onChange={e => setVariantName(e.target.value)}
+                            onChange={e => setVariantName(e.target.value.toUpperCase())}
                             className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-700 outline-none focus:border-indigo-500 text-sm transition-colors uppercase"
                             required
                         />
@@ -510,21 +510,14 @@ const RestockModal = ({ isOpen, onClose, product, variant, onSave }) => {
                              </div>
                         </div>
                         <div>
-                             <label className="block text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1 flex items-center gap-1">
-                                <DollarSign size={10}/> Nuevo Precio Venta
-                             </label>
-                             <div className="relative">
-                                <span className="absolute left-3 top-3.5 text-emerald-300 font-black text-xs">R$</span>
-                                <input 
-                                    type="number" 
-                                    step="0.01"
-                                    placeholder="0.00" 
-                                    value={newSalePrice}
-                                    onChange={e => setNewSalePrice(e.target.value)}
-                                    className="w-full bg-emerald-50/50 border-2 border-emerald-100 rounded-xl pl-9 pr-4 py-3 font-black text-emerald-600 outline-none focus:border-emerald-500 focus:bg-white transition-colors"
-                                    required
-                                />
-                             </div>
+                             <label className="block text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Precio Venta (R$)</label>
+                             <input 
+                                type="number" step="0.01" placeholder="0.00" 
+                                value={newSalePrice}
+                                onChange={e => setNewSalePrice(e.target.value)}
+                                className="w-full bg-emerald-50/50 border border-emerald-100 rounded-xl px-4 py-3 font-black text-emerald-600 outline-none focus:border-emerald-500"
+                                required
+                             />
                         </div>
                     </div>
 
@@ -640,6 +633,17 @@ const InventoryList = () => {
       }
   };
 
+  // EDITAR NOMBRE PRODUCTO (RENOMBRAR)
+  const handleEditProductName = async (group) => {
+      const newName = prompt("Nuevo nombre para el producto:", group.name);
+      if (newName && newName.trim() !== "") {
+          try {
+              await InventoryService.updateProductName(group.primaryDbId, newName);
+              await refresh();
+          } catch (e) { alert("Error al renombrar: " + e.message); }
+      }
+  };
+
   const handleOpenAddVariant = (group) => {
       setSelectedParentProduct({ id: group.primaryDbId, name: group.name });
       setIsModalOpen(true);
@@ -699,8 +703,8 @@ const InventoryList = () => {
                     type="text" 
                     placeholder="Buscar producto..." 
                     value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="bg-slate-800 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 w-full placeholder-slate-500 font-bold"
+                    onChange={e => setSearchTerm(e.target.value.toUpperCase())}
+                    className="bg-slate-800 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 w-full placeholder-slate-500 font-bold uppercase"
                 />
                 <div className="flex gap-2 w-full md:w-auto">
                     <button onClick={refresh} className="p-2 bg-slate-800 text-emerald-400 rounded-lg hover:bg-slate-700 flex-1 md:flex-none justify-center flex">
@@ -760,7 +764,18 @@ const InventoryList = () => {
                                         <Plus size={16} strokeWidth={3}/>
                                         <span className="text-[10px] font-black uppercase hidden md:inline">Medida</span>
                                     </button>
-                                    <div className="w-px h-6 bg-slate-200 mx-2"></div>
+                                    
+                                    <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                                    
+                                    {/* BOTON EDITAR NOMBRE (NUEVO) */}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleEditProductName(group); }}
+                                        className="text-slate-400 hover:text-orange-500 hover:bg-orange-50 p-2 rounded-lg transition-colors"
+                                        title="Editar Nombre del Producto"
+                                    >
+                                        <Edit3 size={18} />
+                                    </button>
+
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleDeleteProduct(group.primaryDbId); }}
                                         className="text-slate-300 hover:text-rose-500 p-2 rounded-lg transition-colors"
