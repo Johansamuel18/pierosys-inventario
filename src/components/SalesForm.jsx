@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ShoppingCart, Plus, Trash2, Search, Calculator, Tag, Layers, Box, AlertCircle, Banknote, Loader2, PackageSearch, Package, Ruler } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Calculator, Tag, Layers, Box, AlertCircle, Banknote, Loader2, PackageSearch, Package, Ruler, ChevronDown, ArrowRight } from 'lucide-react';
 
 const SalesForm = () => {
   // --- DATA STATES ---
@@ -81,12 +81,14 @@ const SalesForm = () => {
       const newName = e.target.value;
       setSelectedProductName(newName);
       
+      // RESET COMPLETO AL CAMBIAR FAMILIA
       setSelectedVariantId('');
       setUnitPriceBRL(0);
       setStockAvailable(0);
       setQuantityInput('');
       setTotalInput('');
 
+      // Auto-selección si solo hay 1 variante
       const matching = allProducts.filter(p => p.name.trim().toUpperCase() === newName);
       let totalVars = 0;
       let targetVar = null;
@@ -99,6 +101,7 @@ const SalesForm = () => {
       });
 
       if (totalVars === 1 && targetVar) {
+          // Pequeño timeout para permitir que el render actualice las opciones primero
           setTimeout(() => applyVariantSelection(String(targetVar.id), targetVar.priceSellBRL, targetVar.stock), 50);
       }
   };
@@ -177,6 +180,7 @@ const SalesForm = () => {
     setQuantityInput('');
     setTotalInput('');
     
+    // Opcional: Resetear selección tras agregar
     setSelectedVariantId('');
     setUnitPriceBRL(0);
   };
@@ -248,6 +252,7 @@ const SalesForm = () => {
   return (
     <div className="max-w-7xl mx-auto h-auto md:h-[calc(100vh-8rem)]">
         
+        {/* HEADER */}
         <div className="flex items-center gap-4 mb-6">
             <div className="bg-indigo-600 p-3 rounded-2xl shadow-lg text-white">
                 <ShoppingCart size={24} />
@@ -257,66 +262,93 @@ const SalesForm = () => {
             </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-auto md:h-full pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-auto md:h-full pb-20 md:pb-10">
             
-            {/* COLUMNA IZQUIERDA: Selector y Calculadora */}
+            {/* =======================================================
+                COLUMNA IZQUIERDA: SELECTORES Y CALCULADORA
+               ======================================================= */}
             <div className="lg:col-span-5 flex flex-col gap-6 h-auto md:h-full">
                 
-                {/* SELECTOR EN CASCADA */}
-                <div className="bg-white rounded-3xl shadow-xl p-6 border border-slate-100 space-y-4">
-                     
-                     {/* PASO 1: FAMILIA */}
-                     <div className="relative">
-                        <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-                            <Package size={12}/> 1. Producto / Familia
-                        </label>
-                        <select 
-                            value={selectedProductName}
-                            onChange={handleNameChange}
-                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-colors appearance-none text-sm md:text-base"
-                        >
-                            <option value="">-- Seleccionar --</option>
-                            {uniqueProductNames.map(name => (
-                              <option key={name} value={name}>{name}</option>
-                            ))}
-                        </select>
-                        <div className="absolute right-4 top-8 pointer-events-none text-slate-400"><Search size={16}/></div>
-                     </div>
+                {/* 1. CARD DE SELECCIÓN EN CASCADA */}
+                <div className="bg-white rounded-[1.5rem] shadow-xl border border-slate-100 p-6 relative overflow-hidden">
+                     {/* Decoración fondo */}
+                     <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-bl-full -mr-4 -mt-4 z-0"></div>
 
-                     {/* PASO 2: MEDIDA */}
-                     <div className={`relative transition-opacity duration-300 ${!selectedProductName ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-                            <Ruler size={12}/> 2. Medida / Variedad
-                        </label>
-                        <select 
-                            value={selectedVariantId}
-                            onChange={handleVariantChange}
-                            disabled={!selectedProductName}
-                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-colors appearance-none text-sm md:text-base"
-                        >
-                            <option value="">{availableVariants.length > 0 ? '-- Seleccionar Medida --' : '-- Sin Variantes --'}</option>
-                            {availableVariants.map(v => (
-                              <option key={v.id} value={v.id}>
-                                {v.name} — R$ {v.price.toFixed(2)}
-                              </option>
-                            ))}
-                        </select>
-                        <div className="absolute right-4 top-8 pointer-events-none text-slate-400"><Layers size={16}/></div>
-                     </div>
+                     <div className="relative z-10 space-y-6">
+                         
+                         {/* PASO 1: FAMILIA */}
+                         <div>
+                            <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                <span className="bg-indigo-100 p-1 rounded text-indigo-600"><Package size={14}/></span>
+                                1. Selecciona Producto
+                            </label>
+                            <div className="relative">
+                                <select 
+                                    value={selectedProductName}
+                                    onChange={handleNameChange}
+                                    className="w-full appearance-none bg-slate-50 border-2 border-slate-200 rounded-xl px-4 pl-5 py-3 pr-10 font-bold text-slate-700 focus:border-indigo-500 focus:bg-white outline-none transition-all h-14 text-sm md:text-base shadow-sm"
+                                >
+                                    <option value="">-- ELIGE FAMILIA --</option>
+                                    {uniqueProductNames.map(name => (
+                                      <option key={name} value={name}>{name}</option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                    <ChevronDown size={20}/>
+                                </div>
+                            </div>
+                         </div>
 
+                         {/* CONECTOR VISUAL */}
+                         {selectedProductName && (
+                            <div className="flex justify-center -my-2 opacity-50">
+                                <ArrowRight className="text-slate-300 rotate-90" size={20}/>
+                            </div>
+                         )}
+
+                         {/* PASO 2: MEDIDA */}
+                         <div className={`transition-all duration-300 ${!selectedProductName ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
+                            <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                <span className="bg-emerald-100 p-1 rounded text-emerald-600"><Ruler size={14}/></span>
+                                2. Selecciona Medida
+                            </label>
+                            <div className="relative">
+                                <select 
+                                    value={selectedVariantId}
+                                    onChange={handleVariantChange}
+                                    disabled={!selectedProductName}
+                                    className="w-full appearance-none bg-slate-50 border-2 border-slate-200 rounded-xl px-4 pl-5 py-3 pr-10 font-bold text-slate-700 focus:border-emerald-500 focus:bg-white outline-none transition-all h-14 text-sm md:text-base shadow-sm"
+                                >
+                                    <option value="">
+                                        {availableVariants.length > 0 ? '-- ELIGE MEDIDA --' : '(Selecciona Producto Primero)'}
+                                    </option>
+                                    {availableVariants.map(v => (
+                                      <option key={v.id} value={v.id}>
+                                        {v.name} — R$ {v.price.toFixed(2)}
+                                      </option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                    <Layers size={20}/>
+                                </div>
+                            </div>
+                         </div>
+
+                     </div>
                 </div>
 
-                {/* VISOR DE STOCK */}
+                {/* 2. VISOR DE STOCK (SOLO SI HAY SELECCIÓN) */}
                 {selectedItem && (
-                    <div className={`rounded-2xl p-6 border-l-4 shadow-lg flex justify-between items-center transition-all animate-in slide-in-from-top-2 ${
+                    <div className={`rounded-2xl p-6 border-l-4 shadow-lg flex justify-between items-center transition-all animate-in slide-in-from-top-4 duration-300 ${
                         remainingStock <= 0 ? 'bg-rose-50 border-rose-500' : 'bg-emerald-50 border-emerald-500'
                     }`}>
                         <div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Stock Disponible</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 block mb-1">Disponible</span>
                             <div className="flex items-baseline gap-1">
                                 <span className={`text-3xl font-black ${remainingStock <= 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                                     {remainingStock.toFixed(2)}
                                 </span>
+                                <span className="text-xs font-bold text-slate-400 uppercase">Unid.</span>
                             </div>
                         </div>
                         {currentInCart > 0 && (
@@ -328,98 +360,110 @@ const SalesForm = () => {
                     </div>
                 )}
 
-                {/* CALCULADORA / INPUT */}
-                <div className={`bg-slate-900 rounded-[2rem] p-6 shadow-2xl flex-1 flex flex-col justify-center relative overflow-hidden min-h-[300px] md:min-h-0 transition-all ${!selectedItem ? 'opacity-90 grayscale' : ''}`}>
+                {/* 3. CALCULADORA */}
+                <div className={`bg-slate-900 rounded-[2rem] p-6 shadow-2xl flex-1 flex flex-col justify-center relative overflow-hidden min-h-[300px] md:min-h-0 transition-all duration-500 ${!selectedItem ? 'opacity-80 grayscale' : ''}`}>
+                     {/* Efectos de fondo */}
                      <div className="absolute -right-10 -top-10 w-40 h-40 bg-indigo-500 rounded-full blur-3xl opacity-20"></div>
 
+                     {/* Overlay de carga si aplica */}
                      {loading && <div className="absolute inset-0 bg-slate-900/80 z-20 flex items-center justify-center"><Loader2 className="animate-spin text-white" size={32}/></div>}
 
                      <div className="relative z-10 space-y-6">
-                        <div className="flex justify-between items-center text-slate-400 text-xs font-bold uppercase tracking-widest">
-                            <span><Calculator size={14} className="inline mr-1"/> Cantidad</span>
-                            <span>Precio: R$ {unitPriceBRL.toFixed(2)}</span>
+                        {/* Header Calculadora */}
+                        <div className="flex justify-between items-center text-slate-400 text-xs font-bold uppercase tracking-widest border-b border-white/10 pb-4">
+                            <span className="flex items-center gap-2"><Calculator size={14}/> Ingreso Cantidad</span>
+                            <span className="bg-white/10 px-2 py-1 rounded text-white">Unit: R$ {unitPriceBRL.toFixed(2)}</span>
                         </div>
                         
-                        <div className="flex items-center gap-2">
+                        {/* Input Cantidad Gigante */}
+                        <div className="flex items-center gap-4">
                              <input 
                                 type="number"
                                 value={quantityInput}
                                 onChange={e => handleQuantityChange(e.target.value)}
                                 disabled={!selectedItem}
                                 placeholder="0"
-                                className={`w-full bg-transparent text-5xl font-black outline-none transition-colors ${
+                                className={`w-full bg-transparent text-6xl font-black outline-none transition-colors placeholder-slate-700 ${
                                     isInputInsufficient ? 'text-rose-500' : 'text-white'
                                 }`}
                             />
-                            <span className="text-slate-600 font-black text-xl">Cant.</span>
+                            <span className="text-slate-600 font-black text-xl rotate-90 origin-left whitespace-nowrap">CANT.</span>
                         </div>
 
-                        <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center gap-3">
-                            <span className="text-emerald-500 font-black text-xl">R$</span>
+                        {/* Input Dinero */}
+                        <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center gap-3 focus-within:bg-white/10 transition-colors">
+                            <span className="text-emerald-500 font-black text-2xl">R$</span>
                             <input 
                                 type="number"
                                 value={totalInput}
                                 onChange={e => handleTotalChange(e.target.value)}
                                 disabled={!selectedItem}
                                 placeholder="0.00"
-                                className="w-full bg-transparent text-3xl font-black text-emerald-400 outline-none"
+                                className="w-full bg-transparent text-3xl font-black text-emerald-400 outline-none placeholder-emerald-900/30"
                             />
                         </div>
 
+                        {/* Botón Agregar */}
                         <button 
                             onClick={addToCart}
                             disabled={!selectedItem || isInputInsufficient || parseFloat(quantityInput) <= 0}
-                            className={`w-full py-4 rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                            className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${
                                 !selectedItem || isInputInsufficient || parseFloat(quantityInput) <= 0
                                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                                : 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg active:scale-95'
+                                : 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg active:scale-95 shadow-indigo-500/20'
                             }`}
                         >
-                            {isInputInsufficient ? <><AlertCircle size={20}/> Stock Insuficiente</> : <><Plus size={20}/> Agregar</>}
+                            {isInputInsufficient ? <><AlertCircle size={24}/> Stock Insuficiente</> : <><Plus size={24}/> Agregar al Ticket</>}
                         </button>
                      </div>
                 </div>
 
             </div>
 
-            {/* COLUMNA DERECHA: TICKET */}
+            {/* =======================================================
+                COLUMNA DERECHA: TICKET DE VENTA
+               ======================================================= */}
             <div className="lg:col-span-7 flex flex-col h-auto md:h-full">
                 
-                {/* En móvil usamos min-h para que el ticket tenga espacio */}
                 <div className="bg-white flex-1 rounded-t-[2rem] shadow-xl border border-slate-100 flex flex-col overflow-hidden min-h-[300px]">
-                    <div className="bg-slate-50 p-6 border-b border-slate-200 flex justify-between items-center">
+                    <div className="bg-slate-50 p-6 border-b border-slate-200 flex justify-between items-center sticky top-0 z-10">
                         <h3 className="font-black text-slate-700 uppercase tracking-widest text-sm flex items-center gap-2">
-                            <Layers size={16}/> Ticket
+                            <Layers size={16} className="text-indigo-500"/> Detalle de Venta
                         </h3>
                         <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-black">
-                            {cart.length} Ítems
+                            {cart.length} {cart.length === 1 ? 'Ítem' : 'Ítems'}
                         </span>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         {cart.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
-                                <ShoppingCart size={64} className="mb-4"/>
-                                <p className="font-black uppercase tracking-widest">Carrito Vacío</p>
+                            <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50 py-10">
+                                <div className="bg-slate-100 p-6 rounded-full mb-4">
+                                    <ShoppingCart size={48} className="text-slate-400"/>
+                                </div>
+                                <p className="font-black uppercase tracking-widest">El carrito está vacío</p>
+                                <p className="text-xs font-medium mt-1">Agrega productos desde la izquierda</p>
                             </div>
                         ) : (
                             cart.map(item => (
-                                <div key={item.tempId} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-200 transition-colors group">
+                                <div key={item.tempId} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all group">
                                     <div className="flex items-center gap-4">
-                                        <div className="bg-white p-2 rounded-lg text-slate-400 shadow-sm">
+                                        <div className="bg-indigo-50 p-3 rounded-xl text-indigo-500">
                                             <Box size={20}/>
                                         </div>
                                         <div>
-                                            <p className="font-bold text-slate-800 text-sm">{item.name}</p>
-                                            <p className="text-xs text-slate-500 font-medium">
-                                                {item.quantity.toFixed(3)} x R$ {item.unitPriceBRL.toFixed(2)}
+                                            <p className="font-bold text-slate-800 text-sm leading-tight">{item.name}</p>
+                                            <p className="text-xs text-slate-500 font-medium mt-1 flex items-center gap-1">
+                                                <span className="bg-slate-100 px-1.5 rounded text-slate-600 font-bold">{item.quantity.toFixed(3)} Unid.</span>
+                                                <span>x</span>
+                                                <span>R$ {item.unitPriceBRL.toFixed(2)}</span>
                                             </p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <span className="font-black text-slate-700">R$ {item.subtotalBRL.toFixed(2)}</span>
-                                        <button onClick={() => removeFromCart(item.tempId)} className="text-slate-300 hover:text-rose-500 transition-colors p-2">
-                                            <Trash2 size={18}/>
+                                        <span className="font-black text-slate-700 text-lg">R$ {item.subtotalBRL.toFixed(2)}</span>
+                                        <button onClick={() => removeFromCart(item.tempId)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors">
+                                            <Trash2 size={16}/>
                                         </button>
                                     </div>
                                 </div>
@@ -428,15 +472,16 @@ const SalesForm = () => {
                     </div>
                 </div>
 
-                <div className="bg-slate-900 rounded-b-[2rem] p-8 shadow-2xl z-10">
+                {/* Footer Totales */}
+                <div className="bg-slate-900 rounded-b-[2rem] p-8 shadow-2xl z-20">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
-                        <div>
+                        <div className="hidden md:block">
                             <span className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Subtotal</span>
                             <span className="block text-2xl font-bold text-slate-300">R$ {subtotal.toFixed(2)}</span>
                         </div>
                         <div>
                             <label className="block text-[10px] font-black text-orange-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                                <Tag size={12}/> Descuento
+                                <Tag size={12}/> Descuento Global
                             </label>
                             <div className={`relative bg-slate-800 rounded-xl border-2 transition-colors ${isDiscountInvalid ? 'border-rose-500' : 'border-slate-700 focus-within:border-orange-500'}`}>
                                 <input type="number" value={globalDiscount} onChange={e => setGlobalDiscount(e.target.value)} placeholder="0.00" className={`w-full bg-transparent p-3 pl-10 font-bold outline-none ${isDiscountInvalid ? 'text-rose-500' : 'text-white'}`} />
@@ -445,7 +490,7 @@ const SalesForm = () => {
                         </div>
                         <div className="text-right">
                              <span className="block text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Total a Pagar</span>
-                             <span className="block text-4xl font-black text-emerald-400 mb-4">R$ {Math.max(0, netTotal).toFixed(2)}</span>
+                             <span className="block text-4xl font-black text-emerald-400 mb-4 tracking-tight">R$ {Math.max(0, netTotal).toFixed(2)}</span>
                              <button onClick={handleConfirmSale} disabled={cart.length === 0 || isDiscountInvalid || loading} className={`w-full py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all ${cart.length === 0 || isDiscountInvalid || loading ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/30 active:scale-95'}`}>
                                 {loading ? <Loader2 className="animate-spin" size={20}/> : <Banknote size={20}/>} {loading ? 'Procesando...' : 'Confirmar Venta'}
                              </button>
