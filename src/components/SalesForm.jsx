@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ShoppingCart, Plus, Trash2, Search, Calculator, Tag, Layers, Box, AlertCircle, Banknote, Loader2, PackageSearch, Package, Ruler, ChevronDown, ArrowRight } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Calculator, Tag, Layers, Box, AlertCircle, Banknote, Loader2, PackageSearch, Package, Ruler, ChevronDown, ArrowRight, User } from 'lucide-react';
 
 const SalesForm = () => {
   // --- DATA STATES ---
@@ -20,6 +20,7 @@ const SalesForm = () => {
   // --- CART STATES ---
   const [cart, setCart] = useState([]);
   const [globalDiscount, setGlobalDiscount] = useState('');
+  const [clientName, setClientName] = useState(''); // NUEVO: Estado para el cliente
 
   // Helper de Redondeo
   const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
@@ -202,7 +203,7 @@ const SalesForm = () => {
     setCart(cart.filter(item => item.tempId !== tempId));
   };
 
-  // --- CONFIRMAR VENTA ---
+  // --- CONFIRMAR VENTA (NUEVO: LÓGICA TRANSACCIONAL) ---
   const subtotal = roundMoney(cart.reduce((acc, item) => acc + item.subtotalBRL, 0));
   const discount = parseFloat(globalDiscount) || 0;
   const netTotal = roundMoney(subtotal - discount);
@@ -215,22 +216,19 @@ const SalesForm = () => {
     try {
       setLoading(true);
       
-      for (const item of cart) {
-        const weight = item.subtotalBRL / subtotal;
-        const discountShare = discount * weight;
-        const effectiveTotalRevenue = roundMoney(item.subtotalBRL - discountShare);
-
-        await InventoryService.processSale(
-          item.parentId,
-          item.id,
-          item.quantity,    
-          effectiveTotalRevenue
-        );
-      }
+      // Llamada a la nueva función de transacción en bloque
+      await InventoryService.recordSaleTransaction(
+          clientName,
+          cart,
+          discount
+      );
 
       alert("Venta registrada correctamente.");
+      
+      // Reset
       setCart([]);
       setGlobalDiscount('');
+      setClientName('');
       setQuantityInput('');
       setSelectedProductName('');
       setSelectedVariantId('');
@@ -240,7 +238,8 @@ const SalesForm = () => {
     } catch (err) {
       console.error(err);
       alert("Error al procesar venta: " + err.message);
-      setLoading(false);
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -490,8 +489,24 @@ const SalesForm = () => {
                     </div>
                 </div>
 
-                {/* Footer Totales */}
-                <div className="bg-slate-900 rounded-b-[2rem] p-8 shadow-2xl z-20">
+                {/* Footer Totales y Cliente */}
+                <div className="bg-slate-900 rounded-b-[2rem] p-8 shadow-2xl z-20 space-y-6">
+                    
+                    {/* INPUT DE CLIENTE */}
+                    <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex items-center gap-4">
+                        <User className="text-indigo-400" size={24}/>
+                        <div className="flex-1">
+                             <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block mb-1">Nombre del Cliente (Opcional)</label>
+                             <input 
+                                type="text"
+                                value={clientName}
+                                onChange={e => setClientName(e.target.value.toUpperCase())}
+                                placeholder="CLIENTE (OPCIONAL)"
+                                className="w-full bg-transparent text-white font-bold placeholder-slate-600 outline-none uppercase"
+                             />
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
                         <div className="hidden md:block">
                             <span className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Subtotal</span>

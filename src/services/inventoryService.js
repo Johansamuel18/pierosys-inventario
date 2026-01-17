@@ -433,64 +433,119 @@ export const InventoryService = {
     return true;
   },
 
-  // --- VENTA ---
-  processSale: async (productId, variantId, quantitySold, totalPriceBRL) => {
+  // --- NUEVA LÓGICA DE VENTA TRANSACCIONAL (AGRUPADA) ---
+  recordSaleTransaction: async (clientName, cartItems, globalDiscountBRL) => {
     const rate = parseFloat(localStorage.getItem(STORAGE_KEY_RATE) || 1.6);
     
-    // Obtener datos frescos de la variante
-    const { data: variant } = await supabase
-        .from('variants')
-        .select('*')
-        .eq('id', variantId)
-        .single();
-        
-    if(!variant) throw new Error("Variante no encontrada");
+    // CAMBIO: Si no hay nombre, se usa "CLIENTE"
+    const safeClient = (clientName && clientName.trim()) ? clientName : 'CLIENTE';
+    
+    // 1. Calcular totales para el Header
+    const subtotal = cartItems.reduce((acc, item) => acc + item.subtotalBRL, 0);
+    const totalBRL = subtotal - globalDiscountBRL;
 
-    const costSolesCurrent = variant.price_buy_soles;
-    const currentStock = variant.stock_quantity;
-
-    const unitPriceBRL = quantitySold > 0 ? (totalPriceBRL / quantitySold) : 0;
-    const historicalCostUnitBRL = costSolesCurrent * rate;
-    const historicalCostTotalBRL = historicalCostUnitBRL * quantitySold;
-
-    // Header Venta
-    const { data: saleHeader, error: saleError } = await supabase
+    // 2. Crear Header de Venta (Transacción)
+    const { data: saleHeader, error: headerError } = await supabase
         .from('sales')
         .insert({
-            total_brl: totalPriceBRL,
-            discount_brl: 0
+            client_name: safeClient.toUpperCase(), // Guardamos el cliente
+            total_brl: totalBRL,
+            discount_brl: globalDiscountBRL
         })
         .select()
         .single();
 
-    if (saleError) throw saleError;
+    if (headerError) throw headerError;
+    
+    const saleId = saleHeader.id;
 
-    // Item Venta
-    const { error: itemError } = await supabase
-        .from('sale_items')
-        .insert({
-            sale_id: saleHeader.id,
-            variant_id: variantId,
-            quantity: quantitySold,
-            price_unit_brl: unitPriceBRL,
-            subtotal_brl: totalPriceBRL,
+    // 3. Preparar Ítems y Actualizar Stock (Bucle de Procesamiento)
+    for (const item of cartItems) {
+        // A. Obtener datos frescos de costo para calcular ganancia real
+        const { data: variant } = await supabase.from('variants').select('*').eq('id', item.id).single();
+        
+        if (!variant) continue;
+
+        // B. Cálculos Financieros
+        const weight = item.subtotalBRL / subtotal; // Peso del ítem en la venta para prorratear descuento
+        const itemDiscount = globalDiscountBRL * weight;
+        const finalRevenue = item.subtotalBRL - itemDiscount;
+        const unitPriceReal = finalRevenue / item.quantity;
+        
+        const historicalCostUnitBRL = variant.price_buy_soles * rate;
+        const historicalCostTotalBRL = historicalCostUnitBRL * item.quantity;
+
+        // C. Insertar Item de Venta
+        await supabase.from('sale_items').insert({
+            sale_id: saleId,
+            variant_id: item.id,
+            quantity: item.quantity,
+            price_unit_brl: unitPriceReal,
+            subtotal_brl: finalRevenue,
             historical_cost_unit_brl: historicalCostUnitBRL,
             historical_cost_total_brl: historicalCostTotalBRL
         });
 
-    if (itemError) throw itemError;
-
-    // Descontar Stock
-    const { error: stockError } = await supabase
-        .from('variants')
-        .update({ stock_quantity: currentStock - quantitySold })
-        .eq('id', variantId);
-
-    if (stockError) throw stockError;
-
+        // D. Descontar Stock
+        const newStock = variant.stock_quantity - item.quantity;
+        await supabase.from('variants').update({ stock_quantity: newStock }).eq('id', item.id);
+    }
+    
     return true;
   },
 
+  // --- REPORTE AGRUPADO (Transacciones) ---
+  fetchTransactions: async () => {
+    try {
+        const { data, error } = await supabase
+            .from('sales')
+            .select(`
+                *,
+                sale_items (
+                    *,
+                    variants ( name, products ( name ) )
+                )
+            `)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        
+        return data.map(sale => {
+            // Calcular métricas de la transacción
+            let totalCost = 0;
+            const items = sale.sale_items.map(item => {
+                const cost = parseFloat(item.historical_cost_total_brl || 0);
+                totalCost += cost;
+                return {
+                    id: item.id,
+                    productName: (item.variants?.products?.name || '?').toUpperCase(),
+                    variantName: (item.variants?.name || '-').toUpperCase(),
+                    quantity: parseFloat(item.quantity),
+                    subtotal: parseFloat(item.subtotal_brl)
+                };
+            });
+
+            const revenue = parseFloat(sale.total_brl);
+            const profit = revenue - totalCost;
+
+            return {
+                id: sale.id,
+                clientName: sale.client_name || 'CLIENTE',
+                timestamp: new Date(sale.created_at).getTime(),
+                totalRevenue: revenue,
+                totalProfit: profit,
+                items: items
+            };
+        });
+
+    } catch (e) {
+        console.error("Error fetching transactions:", e);
+        return [];
+    }
+  },
+
+  // --- DEPRECATED BUT KEPT FOR COMPATIBILITY ---
+  // (Utilizado en DataImporter, lógica legacy)
   fetchSales: async () => {
     try {
         const { data, error } = await supabase
