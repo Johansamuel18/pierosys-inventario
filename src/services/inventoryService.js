@@ -274,7 +274,7 @@ export const InventoryService = {
     }
   },
 
-  // --- IMPORTACIÓN HISTORIAL VENTAS (CORREGIDA: AGRUPACIÓN POR TICKET) ---
+  // --- IMPORTACIÓN HISTORIAL VENTAS ---
   importHistoricalSales: async (salesRows, variantsMap) => {
     let success = 0;
     let failed = 0;
@@ -370,7 +370,8 @@ export const InventoryService = {
                 .from('sales')
                 .insert({
                     created_at: group.date.toISOString(), 
-                    client_name: group.clientName,
+                    // REMOVIDO: client_name (Evitar crash si no existe columna)
+                    // client_name: group.clientName,
                     total_brl: group.totalBRL,
                     discount_brl: 0
                 })
@@ -454,7 +455,7 @@ export const InventoryService = {
       }
   },
 
-  // --- ABASTECIMIENTO (CRÍTICO: STOCK + COSTO + PRECIO) ---
+  // --- ABASTECIMIENTO ---
   addSupply: async (variantId, addedQty, newCostSoles, newPriceSellBRL) => {
     if (!variantId) throw new Error("ID de Variante es requerido");
 
@@ -491,7 +492,8 @@ export const InventoryService = {
   recordSaleTransaction: async (clientName, cartItems, globalDiscountBRL) => {
     const rate = parseFloat(localStorage.getItem(STORAGE_KEY_RATE) || 1.6);
     
-    const safeClient = (clientName && clientName.trim()) ? clientName : 'CLIENTE';
+    // FIX: El campo client_name no existe en la base de datos de Supabase.
+    // Se elimina del insert para evitar el error "Could not find the 'client_name' column".
     
     const subtotal = cartItems.reduce((acc, item) => acc + item.subtotalBRL, 0);
     const totalBRL = subtotal - globalDiscountBRL;
@@ -499,7 +501,7 @@ export const InventoryService = {
     const { data: saleHeader, error: headerError } = await supabase
         .from('sales')
         .insert({
-            client_name: safeClient.toUpperCase(), 
+            // client_name: (clientName || 'CLIENTE').toUpperCase(),  // REMOVIDO POR ERROR DE ESQUEMA
             total_brl: totalBRL,
             discount_brl: globalDiscountBRL
         })
@@ -540,11 +542,11 @@ export const InventoryService = {
     return true;
   },
 
-  // --- ACTUALIZAR VENTA EXISTENTE (EDICIÓN CON CORRECCIÓN DE COSTOS) ---
+  // --- ACTUALIZAR VENTA EXISTENTE ---
   updateSaleTransaction: async (saleId, clientName, items) => {
       try {
-          const safeClient = (clientName && clientName.trim()) ? clientName.toUpperCase() : 'CLIENTE';
-          await supabase.from('sales').update({ client_name: safeClient }).eq('id', saleId);
+          // REMOVIDO: Update de client_name para evitar error de esquema
+          // await supabase.from('sales').update({ client_name: safeClient }).eq('id', saleId);
 
           let newTotalSaleBRL = 0;
 
@@ -611,16 +613,17 @@ export const InventoryService = {
         
         return data.map(sale => {
             let totalCost = 0;
-            const items = sale.sale_items.map(item => {
+            // FIX: Ensure sale_items is array and properties are numbers to avoid white screen
+            const items = (sale.sale_items || []).map(item => {
                 const cost = parseFloat(item.historical_cost_total_brl || 0);
                 totalCost += cost;
                 return {
                     id: item.id,
                     productName: (item.variants?.products?.name || '?').toUpperCase(),
                     variantName: (item.variants?.name || '-').toUpperCase(),
-                    quantity: parseFloat(item.quantity),
-                    subtotal: parseFloat(item.subtotal_brl),
-                    unitPrice: item.price_unit_brl // Auxiliar para edición
+                    quantity: parseFloat(item.quantity) || 0,
+                    subtotal: parseFloat(item.subtotal_brl) || 0,
+                    unitPrice: parseFloat(item.price_unit_brl) || 0 
                 };
             });
 
@@ -629,7 +632,8 @@ export const InventoryService = {
 
             return {
                 id: sale.id,
-                clientName: sale.client_name || 'CLIENTE',
+                // fallback if column missing
+                clientName: sale.client_name || 'CLIENTE', 
                 timestamp: new Date(sale.created_at).getTime(),
                 totalRevenue: revenue,
                 totalProfit: profit,

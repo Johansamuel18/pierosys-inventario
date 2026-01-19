@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { BarChart3, Download, Loader2, ChevronDown, User, Calendar, DollarSign, TrendingUp, Package, Pencil, X, Save, AlertTriangle, Calculator, Briefcase, Archive, AlertOctagon } from 'lucide-react';
+import { BarChart3, Download, Loader2, ChevronDown, ChevronUp, User, Calendar, DollarSign, TrendingUp, Package, Pencil, X, Save, AlertTriangle, Calculator, Briefcase, Archive, AlertOctagon } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // MODAL PARA EDITAR VENTA (MANTENIDO IGUAL)
@@ -238,11 +238,11 @@ const FinancialTab = ({ transactions, onEdit }) => {
                                             <tr><th className="pb-2">Producto</th><th className="pb-2 text-right">Cant.</th><th className="pb-2 text-right">Total</th></tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-200">
-                                            {sale.items.map((it, i) => (
+                                            {(sale.items || []).map((it, i) => (
                                                 <tr key={i}>
                                                     <td className="py-2 font-medium text-slate-600">{it.productName} <span className="text-slate-400 text-xs">({it.variantName})</span></td>
                                                     <td className="py-2 text-right font-bold">{it.quantity}</td>
-                                                    <td className="py-2 text-right font-bold text-slate-800">R$ {it.subtotal.toFixed(2)}</td>
+                                                    <td className="py-2 text-right font-bold text-slate-800">R$ {(it.subtotal || 0).toFixed(2)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
