@@ -1,8 +1,94 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ChevronDown, ChevronUp, Package, Trash2, Ruler, RefreshCw, AlertOctagon, Plus, X, Save, Loader2, Calculator, Info, Box, Disc, Layers, Archive, Truck, DollarSign, Lock, Pencil, Edit3 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Package, Trash2, Ruler, RefreshCw, AlertOctagon, Plus, X, Save, Loader2, Calculator, Info, Box, Disc, Layers, Archive, Truck, DollarSign, Lock, Pencil, Edit3, TrendingUp } from 'lucide-react';
 
 const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
+
+// ==================================================================================
+// COMPONENTE: MODAL DE EDICIÓN DE PRECIO (NUEVO)
+// ==================================================================================
+const EditPriceModal = ({ isOpen, onClose, variant, onSave }) => {
+    const [newPrice, setNewPrice] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [rate, setRate] = useState(1.6);
+
+    useEffect(() => {
+        if (isOpen && variant) {
+            setNewPrice(variant.priceSellBRL ? variant.priceSellBRL.toFixed(2) : '');
+            const r = InventoryService.getExchangeRate();
+            setRate(r);
+        }
+    }, [isOpen, variant]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const price = parseFloat(newPrice);
+            if (isNaN(price) || price < 0) throw new Error("Precio inválido");
+            await onSave(variant.id, price);
+            onClose();
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen || !variant) return null;
+
+    // Cálculos de Referencia
+    const costSoles = variant.priceBuySoles || 0;
+    const costBRL = costSoles * rate;
+    const currentInput = parseFloat(newPrice) || 0;
+    const margin = currentInput > 0 ? ((currentInput - costBRL) / currentInput) * 100 : 0;
+
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
+             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200">
+                <div className="bg-emerald-600 p-4 flex justify-between items-center text-white">
+                    <h3 className="font-black uppercase tracking-widest text-sm flex items-center gap-2">
+                        <DollarSign size={16}/> Editar Precio Venta
+                    </h3>
+                    <button onClick={onClose} className="hover:bg-white/20 p-1 rounded-full"><X size={16}/></button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <div className="text-center mb-2">
+                        <p className="text-xs font-bold text-slate-400 uppercase">{variant.name}</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Nuevo Precio (R$)</label>
+                        <input 
+                            type="number" step="0.01" autoFocus
+                            value={newPrice} onChange={e => setNewPrice(e.target.value)}
+                            className="w-full text-center text-3xl font-black text-emerald-600 border-2 border-emerald-100 rounded-xl py-3 outline-none focus:border-emerald-500 focus:bg-emerald-50/30 transition-all"
+                        />
+                    </div>
+
+                    {/* DATOS DE REFERENCIA PARA NO PERDER DINERO */}
+                    <div className="bg-slate-50 rounded-xl p-3 space-y-2 border border-slate-100">
+                         <div className="flex justify-between items-center text-xs">
+                             <span className="font-bold text-slate-400 uppercase">Costo Base</span>
+                             <span className="font-bold text-slate-600">S/ {costSoles.toFixed(2)} <span className="text-slate-300">|</span> R$ {costBRL.toFixed(2)}</span>
+                         </div>
+                         <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-2">
+                             <span className="font-bold text-slate-400 uppercase">Margen Est.</span>
+                             <span className={`font-black ${margin > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                 {margin.toFixed(1)}%
+                             </span>
+                         </div>
+                    </div>
+
+                    <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg flex justify-center gap-2">
+                        {loading ? <Loader2 className="animate-spin"/> : <Save size={18}/>} Guardar Precio
+                    </button>
+                </form>
+             </div>
+        </div>
+    );
+};
 
 // ==================================================================================
 // 1. COMPONENTE: MODAL DE CREACIÓN RÁPIDA (MANTENIDO)
@@ -552,6 +638,10 @@ const InventoryList = () => {
   const [isRestockOpen, setIsRestockOpen] = useState(false); // Restock
   const [selectedRestockData, setSelectedRestockData] = useState({ product: null, variant: null });
 
+  // NUEVO: Estado para Edición de Precio
+  const [isPriceEditOpen, setIsPriceEditOpen] = useState(false);
+  const [variantToEditPrice, setVariantToEditPrice] = useState(null);
+
   const refresh = async () => {
     try {
       setLoading(true);
@@ -671,6 +761,17 @@ const InventoryList = () => {
           data.newCostSoles,
           data.newPriceBRL
       );
+      await refresh();
+  };
+
+  // MANEJO DE EDICIÓN DE PRECIO
+  const handleOpenEditPrice = (variant) => {
+      setVariantToEditPrice(variant);
+      setIsPriceEditOpen(true);
+  };
+
+  const handleSaveNewPrice = async (variantId, newPrice) => {
+      await InventoryService.updateVariantPrice(variantId, newPrice);
       await refresh();
   };
 
@@ -833,8 +934,17 @@ const InventoryList = () => {
                                                         <div className="flex justify-between items-end">
                                                             <div>
                                                                 <div className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Precio Venta</div>
-                                                                <div className="font-black text-emerald-500 text-lg flex items-center">
+                                                                <div className="font-black text-emerald-500 text-lg flex items-center group/price">
                                                                     <span className="text-xs mr-0.5">R$</span> {variant.priceSellBRL ? variant.priceSellBRL.toFixed(2) : '0.00'}
+                                                                    
+                                                                    {/* BOTÓN EDITAR PRECIO */}
+                                                                    <button 
+                                                                        onClick={() => handleOpenEditPrice(variant)}
+                                                                        className="ml-2 bg-emerald-50 text-emerald-300 p-1 rounded hover:bg-emerald-500 hover:text-white transition-all opacity-0 group-hover/price:opacity-100"
+                                                                        title="Editar Precio"
+                                                                    >
+                                                                        <Pencil size={12}/>
+                                                                    </button>
                                                                 </div>
                                                             </div>
                                                             <div className="text-right">
@@ -883,6 +993,14 @@ const InventoryList = () => {
             product={selectedRestockData.product}
             variant={selectedRestockData.variant}
             onSave={handleSaveRestock}
+        />
+
+        {/* MODAL DE EDICIÓN DE PRECIO (NUEVO) */}
+        <EditPriceModal
+            isOpen={isPriceEditOpen}
+            onClose={() => setIsPriceEditOpen(false)}
+            variant={variantToEditPrice}
+            onSave={handleSaveNewPrice}
         />
     </>
   );

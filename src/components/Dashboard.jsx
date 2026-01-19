@@ -8,7 +8,8 @@ const Dashboard = () => {
       totalInventoryValueBRL: 0,
       totalSalesTodayBRL: 0,
       totalProfitTodayBRL: 0,
-      lowStockCount: 0
+      lowStockCount: 0,
+      restockCostBRL: 0 // Nuevo Campo
   });
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +63,7 @@ const Dashboard = () => {
       <div>
         <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">{title}</p>
         <h3 className="text-2xl font-black text-slate-800">{loading ? '...' : value}</h3>
-        {sub && <p className={`text-xs font-bold mt-1 ${color === 'rose' ? 'text-rose-500' : 'text-emerald-500'}`}>{sub}</p>}
+        {sub && <p className={`text-[10px] font-bold mt-1 ${color === 'rose' ? 'text-rose-500' : 'text-emerald-500'}`}>{sub}</p>}
       </div>
       <div className={`p-4 rounded-xl bg-${color}-50 text-${color}-600`}>
         <Icon size={28} />
@@ -104,7 +105,7 @@ const Dashboard = () => {
         <StatCard 
           title="Alertas Stock" 
           value={stats.lowStockCount} 
-          sub="Productos críticos"
+          sub={stats.restockCostBRL > 0 ? `Se necesitan R$ ${stats.restockCostBRL.toFixed(2)}` : "Inventario Saludable"}
           icon={AlertTriangle}
           color="rose"
         />

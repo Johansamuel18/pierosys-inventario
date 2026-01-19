@@ -151,6 +151,22 @@ export const InventoryService = {
       }
   },
 
+  // --- NUEVO: ACTUALIZAR PRECIO VARIANTE INDIVIDUAL ---
+  updateVariantPrice: async (variantId, newPriceBRL) => {
+      try {
+          const { error } = await supabase
+            .from('variants')
+            .update({ price_sell_brl: newPriceBRL })
+            .eq('id', variantId);
+          
+          if (error) throw error;
+          return true;
+      } catch (e) {
+          console.error("Error updating price:", e);
+          throw e;
+      }
+  },
+
   // --- AGREGAR VARIANTE A PRODUCTO EXISTENTE ---
   addVariant: async (productId, variantData) => {
       try {
@@ -258,7 +274,7 @@ export const InventoryService = {
     }
   },
 
-  // --- IMPORTACIÓN HISTORIAL VENTAS ---
+  // --- IMPORTACIÓN HISTORIAL VENTAS (CORREGIDA: AGRUPACIÓN POR TICKET) ---
   importHistoricalSales: async (salesRows, variantsMap) => {
     let success = 0;
     let failed = 0;
@@ -279,16 +295,18 @@ export const InventoryService = {
         } catch (e) { return new Date(); }
     };
 
+    // 1. FASE DE AGRUPAMIENTO
+    const groupedSales = {};
+
     for (const row of salesRows) {
         try {
             const prodName = normalize(row['Producto'] || row['name']);
             const measureName = normalize(row['Medida'] || row['Variante']);
             
+            // Identificación de Variante
             let variantId = variantsMap[`${prodName}|${measureName}`];
             if (!variantId) variantId = variantsMap[prodName];
-
             if (!variantId) {
-                // Intento fuzzy
                 const mapKeys = Object.keys(variantsMap);
                 const partialKey = mapKeys.find(k => k.includes(prodName) || prodName.includes(k.split('|')[0]));
                 if (partialKey) variantId = variantsMap[partialKey];
@@ -300,16 +318,60 @@ export const InventoryService = {
                 continue; 
             }
 
+            // Datos de Fila
             const qty = Math.abs(parseFloat(row['Cantidad'] || row['qty'] || 0));
             const totalSale = Math.abs(parseFloat(row['Total Venta (R$)'] || row['Total'] || 0));
             const costUnit = Math.abs(parseFloat(row['Costo Unit. (R$)'] || row['Costo'] || 0)); 
             const saleDate = parseLatinDate(row['Fecha']);
+            const clientName = (row['Cliente'] || 'CLIENTE').toUpperCase().trim();
 
+            // Clave Única de Agrupación: YYYY-MM-DD + CLIENTE
+            const dateKey = saleDate.toISOString().split('T')[0];
+            const groupKey = `${dateKey}_${clientName}`;
+
+            if (!groupedSales[groupKey]) {
+                groupedSales[groupKey] = {
+                    clientName: clientName,
+                    date: saleDate, // Guardamos objeto Date para timestamp
+                    totalBRL: 0,
+                    items: []
+                };
+            }
+
+            // Cálculo financiero del ítem
+            const historicalCostTotal = costUnit * qty;
+            const priceUnit = qty > 0 ? (totalSale / qty) : 0;
+
+            groupedSales[groupKey].items.push({
+                variant_id: variantId,
+                quantity: qty,
+                price_unit_brl: priceUnit,
+                subtotal_brl: totalSale,
+                historical_cost_unit_brl: costUnit,
+                historical_cost_total_brl: historicalCostTotal
+            });
+
+            // Acumular Total del Ticket
+            groupedSales[groupKey].totalBRL += totalSale;
+
+        } catch (e) {
+            console.error("Error parseando fila:", e);
+            failed++;
+        }
+    }
+
+    // 2. FASE DE INSERCIÓN (Por Grupos)
+    const groups = Object.values(groupedSales);
+    
+    for (const group of groups) {
+        try {
+            // A. Crear Header Único
             const { data: saleHeader, error: headError } = await supabase
                 .from('sales')
                 .insert({
-                    created_at: saleDate.toISOString(), 
-                    total_brl: totalSale,
+                    created_at: group.date.toISOString(), 
+                    client_name: group.clientName,
+                    total_brl: group.totalBRL,
                     discount_brl: 0
                 })
                 .select()
@@ -317,28 +379,25 @@ export const InventoryService = {
 
             if (headError) throw headError;
 
-            const historicalCostTotal = costUnit * qty;
-            const priceUnit = qty > 0 ? (totalSale / qty) : 0;
+            // B. Insertar todos los ítems de ese grupo
+            const itemsPayload = group.items.map(item => ({
+                sale_id: saleHeader.id,
+                ...item
+            }));
 
             const { error: itemError } = await supabase
                 .from('sale_items')
-                .insert({
-                    sale_id: saleHeader.id,
-                    variant_id: variantId,
-                    quantity: qty,
-                    price_unit_brl: priceUnit,
-                    subtotal_brl: totalSale,
-                    historical_cost_unit_brl: costUnit,
-                    historical_cost_total_brl: historicalCostTotal
-                });
+                .insert(itemsPayload);
 
             if (itemError) throw itemError;
-            success++;
+            success++; // Contamos 1 éxito por TICKET, no por ítem
+
         } catch (e) {
-            console.error("Row Error:", e);
-            failed++;
+            console.error("Error insertando grupo:", e);
+            failed++; // Fallo del ticket completo
         }
     }
+
     return { success, failed, errors };
   },
 
@@ -399,7 +458,6 @@ export const InventoryService = {
   addSupply: async (variantId, addedQty, newCostSoles, newPriceSellBRL) => {
     if (!variantId) throw new Error("ID de Variante es requerido");
 
-    // 1. Obtener datos actuales (para sumar stock)
     const { data: currentVariant, error: fetchError } = await supabase
         .from('variants')
         .select('stock_quantity, price_buy_soles')
@@ -408,22 +466,18 @@ export const InventoryService = {
     
     if (fetchError) throw fetchError;
 
-    // 2. Calcular nuevo stock
     const currentStock = parseFloat(currentVariant.stock_quantity) || 0;
     const finalStock = currentStock + parseFloat(addedQty);
 
-    // 3. Objeto de actualización
     const updatePayload = {
         stock_quantity: finalStock,
         price_buy_soles: newCostSoles > 0 ? newCostSoles : currentVariant.price_buy_soles
     };
 
-    // 4. Si viene nuevo precio de venta, lo agregamos al update
     if (newPriceSellBRL > 0) {
         updatePayload.price_sell_brl = newPriceSellBRL;
     }
 
-    // 5. Ejecutar Update Atómico
     const { error: updateError } = await supabase
         .from('variants')
         .update(updatePayload)
@@ -437,18 +491,15 @@ export const InventoryService = {
   recordSaleTransaction: async (clientName, cartItems, globalDiscountBRL) => {
     const rate = parseFloat(localStorage.getItem(STORAGE_KEY_RATE) || 1.6);
     
-    // CAMBIO: Si no hay nombre, se usa "CLIENTE"
     const safeClient = (clientName && clientName.trim()) ? clientName : 'CLIENTE';
     
-    // 1. Calcular totales para el Header
     const subtotal = cartItems.reduce((acc, item) => acc + item.subtotalBRL, 0);
     const totalBRL = subtotal - globalDiscountBRL;
 
-    // 2. Crear Header de Venta (Transacción)
     const { data: saleHeader, error: headerError } = await supabase
         .from('sales')
         .insert({
-            client_name: safeClient.toUpperCase(), // Guardamos el cliente
+            client_name: safeClient.toUpperCase(), 
             total_brl: totalBRL,
             discount_brl: globalDiscountBRL
         })
@@ -459,15 +510,12 @@ export const InventoryService = {
     
     const saleId = saleHeader.id;
 
-    // 3. Preparar Ítems y Actualizar Stock (Bucle de Procesamiento)
     for (const item of cartItems) {
-        // A. Obtener datos frescos de costo para calcular ganancia real
         const { data: variant } = await supabase.from('variants').select('*').eq('id', item.id).single();
         
         if (!variant) continue;
 
-        // B. Cálculos Financieros
-        const weight = item.subtotalBRL / subtotal; // Peso del ítem en la venta para prorratear descuento
+        const weight = item.subtotalBRL / subtotal; 
         const itemDiscount = globalDiscountBRL * weight;
         const finalRevenue = item.subtotalBRL - itemDiscount;
         const unitPriceReal = finalRevenue / item.quantity;
@@ -475,7 +523,6 @@ export const InventoryService = {
         const historicalCostUnitBRL = variant.price_buy_soles * rate;
         const historicalCostTotalBRL = historicalCostUnitBRL * item.quantity;
 
-        // C. Insertar Item de Venta
         await supabase.from('sale_items').insert({
             sale_id: saleId,
             variant_id: item.id,
@@ -486,7 +533,6 @@ export const InventoryService = {
             historical_cost_total_brl: historicalCostTotalBRL
         });
 
-        // D. Descontar Stock
         const newStock = variant.stock_quantity - item.quantity;
         await supabase.from('variants').update({ stock_quantity: newStock }).eq('id', item.id);
     }
@@ -494,7 +540,60 @@ export const InventoryService = {
     return true;
   },
 
-  // --- REPORTE AGRUPADO (Transacciones) ---
+  // --- ACTUALIZAR VENTA EXISTENTE (EDICIÓN CON CORRECCIÓN DE COSTOS) ---
+  updateSaleTransaction: async (saleId, clientName, items) => {
+      try {
+          const safeClient = (clientName && clientName.trim()) ? clientName.toUpperCase() : 'CLIENTE';
+          await supabase.from('sales').update({ client_name: safeClient }).eq('id', saleId);
+
+          let newTotalSaleBRL = 0;
+
+          for (const item of items) {
+              const qty = parseFloat(item.quantity) || 0;
+              const subtotal = parseFloat(item.subtotal) || 0;
+              
+              const { data: oldItem } = await supabase
+                .from('sale_items')
+                .select('quantity, variant_id, historical_cost_unit_brl')
+                .eq('id', item.id)
+                .single();
+              
+              if (oldItem) {
+                  const qtyDifference = oldItem.quantity - qty; 
+
+                  if (qtyDifference !== 0) {
+                      const { data: variant } = await supabase.from('variants').select('stock_quantity').eq('id', oldItem.variant_id).single();
+                      if (variant) {
+                          const newStock = variant.stock_quantity + qtyDifference;
+                          await supabase.from('variants').update({ stock_quantity: newStock }).eq('id', oldItem.variant_id);
+                      }
+                  }
+
+                  const priceUnit = qty > 0 ? (subtotal / qty) : 0;
+                  const newHistoricalCostTotal = (oldItem.historical_cost_unit_brl || 0) * qty;
+
+                  await supabase.from('sale_items').update({
+                      quantity: qty,
+                      subtotal_brl: subtotal,
+                      price_unit_brl: priceUnit,
+                      historical_cost_total_brl: newHistoricalCostTotal 
+                  }).eq('id', item.id);
+                  
+                  newTotalSaleBRL += subtotal;
+              }
+          }
+
+          await supabase.from('sales').update({ total_brl: newTotalSaleBRL }).eq('id', saleId);
+          return true;
+
+      } catch (e) {
+          console.error("Error updating transaction:", e);
+          throw e;
+      }
+  },
+
+  // --- REPORTES Y ESTADÍSTICAS ---
+
   fetchTransactions: async () => {
     try {
         const { data, error } = await supabase
@@ -511,7 +610,6 @@ export const InventoryService = {
         if (error) throw error;
         
         return data.map(sale => {
-            // Calcular métricas de la transacción
             let totalCost = 0;
             const items = sale.sale_items.map(item => {
                 const cost = parseFloat(item.historical_cost_total_brl || 0);
@@ -521,7 +619,8 @@ export const InventoryService = {
                     productName: (item.variants?.products?.name || '?').toUpperCase(),
                     variantName: (item.variants?.name || '-').toUpperCase(),
                     quantity: parseFloat(item.quantity),
-                    subtotal: parseFloat(item.subtotal_brl)
+                    subtotal: parseFloat(item.subtotal_brl),
+                    unitPrice: item.price_unit_brl // Auxiliar para edición
                 };
             });
 
@@ -544,45 +643,105 @@ export const InventoryService = {
     }
   },
 
-  // --- DEPRECATED BUT KEPT FOR COMPATIBILITY ---
-  // (Utilizado en DataImporter, lógica legacy)
-  fetchSales: async () => {
+  // --- BI: VALORIZACIÓN DE INVENTARIO ---
+  fetchValuationData: async () => {
     try {
-        const { data, error } = await supabase
-            .from('sale_items')
+        const { data: variants, error } = await supabase
+            .from('variants')
             .select(`
-                *,
-                sales ( created_at ),
-                variants ( name, products ( name ) )
+                id,
+                name,
+                stock_quantity,
+                price_buy_soles,
+                price_sell_brl,
+                products ( name )
             `)
-            .order('id', { ascending: false });
+            .gt('stock_quantity', 0) // Solo lo que existe
+            .order('stock_quantity', { ascending: false });
 
-        if (error) throw error;
-        if (!data) return [];
+        if(error) throw error;
 
-        return data.map(item => {
-            const revenue = parseFloat(item.subtotal_brl);
-            const cost = parseFloat(item.historical_cost_total_brl || 0);
-            const profit = revenue - cost;
+        const rate = parseFloat(localStorage.getItem(STORAGE_KEY_RATE) || 1.6);
+        
+        return variants.map(v => {
+            const stock = parseFloat(v.stock_quantity);
+            const costBRL = (parseFloat(v.price_buy_soles) * rate);
+            const saleBRL = parseFloat(v.price_sell_brl);
 
             return {
-                id: item.id,
-                timestamp: new Date(item.sales?.created_at).getTime(),
-                productName: (item.variants?.products?.name || '?').toUpperCase(), // Forzar Mayuscula
-                variantName: (item.variants?.name || '-').toUpperCase(), // Forzar Mayuscula
-                quantity: parseFloat(item.quantity),
-                salePriceTotalBRL: revenue,
-                historicalCostTotalBRL: cost,
-                grossProfitBRL: profit,
-                marginPercent: revenue > 0 ? ((profit / revenue) * 100) : 0
+                id: v.id,
+                productName: v.products?.name,
+                variantName: v.name,
+                stock: stock,
+                unitCostBRL: costBRL,
+                totalInvestmentBRL: stock * costBRL, // DINERO CONGELADO
+                totalPotentialRevenueBRL: stock * saleBRL
             };
         });
+
     } catch (e) {
-        console.error(e);
+        console.error("Valuation Error:", e);
         return [];
     }
   },
 
+  // --- BI: PRODUCTOS DE BAJA ROTACIÓN (HUESO) ---
+  fetchSlowMovingItems: async () => {
+      try {
+          // 1. Obtener todos los items con su stock
+          const { data: variants } = await supabase
+            .from('variants')
+            .select(`id, name, stock_quantity, price_buy_soles, products(name)`)
+            .gt('stock_quantity', 0); // Solo importa lo que tenemos estancado
+
+          // 2. Obtener la última venta de cada variante
+          // (Como Supabase no tiene MAX() directo fácil en JS client sin RPC, hacemos query manual)
+          // Optimizacion: Traemos solo sale_items con fecha
+          const { data: sales } = await supabase
+            .from('sale_items')
+            .select('variant_id, sales(created_at)')
+            .order('sales(created_at)', { ascending: false }); // Ordenado por fecha reciente
+            
+          const lastSalesMap = {};
+          sales.forEach(s => {
+              if (!lastSalesMap[s.variant_id]) {
+                  lastSalesMap[s.variant_id] = new Date(s.sales.created_at);
+              }
+          });
+
+          const rate = parseFloat(localStorage.getItem(STORAGE_KEY_RATE) || 1.6);
+          const today = new Date();
+          const slowItems = [];
+
+          variants.forEach(v => {
+              const lastSaleDate = lastSalesMap[v.id];
+              let daysSince = 999; // Si nunca se vendió
+
+              if (lastSaleDate) {
+                  const diffTime = Math.abs(today - lastSaleDate);
+                  daysSince = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+              }
+
+              if (daysSince > 30) { // CRITERIO: Más de 30 días sin venta
+                  slowItems.push({
+                      id: v.id,
+                      fullName: `${v.products?.name} ${v.name}`,
+                      stock: v.stock_quantity,
+                      frozenValue: v.stock_quantity * v.price_buy_soles * rate,
+                      daysSinceSale: daysSince === 999 ? 'Nunca' : daysSince
+                  });
+              }
+          });
+
+          return slowItems.sort((a,b) => (b.daysSinceSale === 'Nunca' ? 1 : b.daysSinceSale) - (a.daysSinceSale === 'Nunca' ? 1 : a.daysSinceSale));
+
+      } catch (e) {
+          console.error("Slow Moving Error", e);
+          return [];
+      }
+  },
+
+  // --- DASHBOARD UPDATED ---
   fetchDashboardStats: async () => {
     try {
         const { data: variants } = await supabase.from('variants').select('stock_quantity, price_buy_soles, min_stock');
@@ -590,11 +749,23 @@ export const InventoryService = {
         
         let totalInventoryValueBRL = 0;
         let lowStockCount = 0;
+        let restockCostBRL = 0; // NUEVO KPI: Capital necesario para reponer
 
         if (variants) {
             variants.forEach(v => {
-                totalInventoryValueBRL += (v.stock_quantity * v.price_buy_soles * rate);
-                if(v.stock_quantity <= (v.min_stock || 5)) lowStockCount++;
+                const stock = parseFloat(v.stock_quantity);
+                const min = parseFloat(v.min_stock || 5);
+                const costBRL = parseFloat(v.price_buy_soles) * rate;
+
+                totalInventoryValueBRL += (stock * costBRL);
+                
+                if(stock <= min) {
+                    lowStockCount++;
+                    // Calcular costo para reponer hasta (min_stock + 5 buffer)
+                    const targetStock = min + 5;
+                    const needed = Math.max(0, targetStock - stock);
+                    restockCostBRL += (needed * costBRL);
+                }
             });
         }
 
@@ -620,10 +791,20 @@ export const InventoryService = {
             totalInventoryValueBRL,
             totalSalesTodayBRL,
             totalProfitTodayBRL,
-            lowStockCount
+            lowStockCount,
+            restockCostBRL // Return new Metric
         };
     } catch (e) {
-        return { totalInventoryValueBRL: 0, totalSalesTodayBRL: 0, totalProfitTodayBRL: 0, lowStockCount: 0 };
+        return { totalInventoryValueBRL: 0, totalSalesTodayBRL: 0, totalProfitTodayBRL: 0, lowStockCount: 0, restockCostBRL: 0 };
     }
+  },
+
+  fetchSales: async () => {
+      // Legacy support for Chart
+      const rows = await InventoryService.fetchTransactions();
+      return rows.map(r => ({
+          timestamp: r.timestamp,
+          salePriceTotalBRL: r.totalRevenue
+      }));
   }
 };
