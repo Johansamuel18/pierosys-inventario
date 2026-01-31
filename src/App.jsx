@@ -7,6 +7,7 @@ import SalesForm from './components/SalesForm.jsx';
 import InventoryList from './components/InventoryList.jsx';
 import Reports from './components/Reports.jsx';
 import DataImporter from './components/DataImporter.jsx'; // Nuevo Componente
+import PieroAI from './components/PieroAI.jsx'; // Componente IA
 import { InventoryService } from './services/inventoryService.js';
 
 const App = () => {
@@ -32,6 +33,7 @@ const App = () => {
       case 'inventory': return <InventoryList />;
       case 'reports': return <Reports />;
       case 'settings': return <DataImporter />; // Nueva Pestaña
+      case 'ai-assistant': return <PieroAI />;
       default: return <Dashboard />;
     }
   };

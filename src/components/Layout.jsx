@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, PackagePlus, Truck, ShoppingCart, BarChart3, Settings, Boxes, Database, Menu } from 'lucide-react';
+import { LayoutDashboard, PackagePlus, Truck, ShoppingCart, BarChart3, Settings, Boxes, Database, Menu, Bot } from 'lucide-react';
 
 const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }) => {
   
@@ -10,6 +10,7 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
     { id: 'supply', label: 'Abastecer', mobileLabel: 'Compra', icon: Truck },
     { id: 'products', label: 'Nuevo Prod.', mobileLabel: 'Crear', icon: PackagePlus },
     { id: 'reports', label: 'Reportes', mobileLabel: 'Reportes', icon: BarChart3 },
+    { id: 'ai-assistant', label: 'Piero AI', mobileLabel: 'IA', icon: Bot },
   ];
 
   const activeItem = menuItems.find(i => i.id === activeTab) || (activeTab === 'settings' ? {label: 'Configuración', mobileLabel: 'Config'} : menuItems[0]);
