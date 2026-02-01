@@ -3,6 +3,9 @@
 // 1. OBTENER API KEY
 const apiKey = (import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_GROQ_API_KEY || "").trim();
 
+// Diagnóstico para ver si la clave carga en la nube (F12 en el navegador)
+console.log("🤖 Piero AI Config:", { hasKey: !!apiKey, mode: import.meta.env.MODE });
+
 // CONFIGURACIÓN:
 // Para OpenAI (ChatGPT):
 // const API_URL = "https://api.openai.com/v1/chat/completions";
@@ -108,7 +111,7 @@ export const sendMessageToPiero = async (session, message) => {
 
   // Si no hay API Key, usar modo local inmediatamente
   if (!apiKey) {
-      return generateLocalResponse(message, session.contextData) + "\n\n*(Falta API Key de OpenAI)*";
+      return generateLocalResponse(message, session.contextData) + "\n\n*(⚠️ Error: No detecto la API Key en la configuración de la nube)*";
   }
 
   // 1. Agregar mensaje del usuario al historial
