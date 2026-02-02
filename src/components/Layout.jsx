@@ -138,7 +138,7 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
         {/* CONTENT SCROLLABLE AREA */}
         {/* Ajustamos pb (padding-bottom) para móviles: 100px es suficiente para librar el menú */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-10 pb-[100px] md:pb-10 scroll-smooth">
-          <div className="max-w-7xl mx-auto h-full animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
             {children}
           </div>
         </main>

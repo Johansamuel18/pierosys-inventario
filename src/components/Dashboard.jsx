@@ -72,7 +72,8 @@ const Dashboard = () => {
   );
 
   return (
-    <div className="space-y-8">
+    // CAMBIO: Altura dinámica y scroll interno para móvil
+    <div className="space-y-8 h-[calc(100dvh-150px)] md:h-auto overflow-y-auto md:overflow-visible pb-20 md:pb-0 scrollbar-hide">
       <div>
         <h2 className="text-3xl font-black text-slate-800 tracking-tight">Centro de Comando</h2>
         <p className="text-slate-500">

@@ -787,9 +787,10 @@ const InventoryList = () => {
 
   return (
     <>
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden min-h-[500px]">
+        {/* CAMBIO: Estructura Flex con altura fija en móvil para scroll interno */}
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden flex flex-col h-[calc(100dvh-150px)] md:h-auto md:min-h-[500px]">
         {/* HEADER */}
-        <div className="bg-slate-900 p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="bg-slate-900 p-6 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0 z-10">
             <div>
                 <h2 className="text-xl font-black text-white uppercase tracking-widest flex items-center gap-2">
                 <Package className="text-emerald-500" /> Inventario Maestro
@@ -824,7 +825,7 @@ const InventoryList = () => {
                 <Loader2 className="animate-spin" size={40}/>
             </div>
         ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto flex-1">
                 <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-black tracking-wider border-b border-slate-200">
                     <tr>
