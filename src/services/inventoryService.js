@@ -810,5 +810,23 @@ export const InventoryService = {
           timestamp: r.timestamp,
           salePriceTotalBRL: r.totalRevenue
       }));
+  },
+
+  // --- REALTIME: SUSCRIPCIÓN A VENTAS ---
+  subscribeToSales: (callback) => {
+    const channel = supabase
+      .channel('sales-tracker')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'sales' },
+        (payload) => {
+          callback(payload.new);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }
 };

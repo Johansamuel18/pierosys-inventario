@@ -3,17 +3,26 @@
 // 1. OBTENER API KEY
 const apiKey = (import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_GROQ_API_KEY || "").trim();
 
-// Diagnóstico para ver si la clave carga en la nube (F12 en el navegador)
-console.log("🤖 Piero AI Config:", { hasKey: !!apiKey, mode: import.meta.env.MODE });
-
 // CONFIGURACIÓN:
-// Para OpenAI (ChatGPT):
-// const API_URL = "https://api.openai.com/v1/chat/completions";
-// const MODEL = "gpt-4o-mini"; // Modelo rápido y económico
+let API_URL = "https://api.groq.com/openai/v1/chat/completions";
+let MODEL = "llama-3.3-70b-versatile"; 
+let PROVIDER_NAME = "Groq";
 
-// Para Groq (Opción GRATUITA):
-const API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = "llama-3.3-70b-versatile"; 
+// DETECCIÓN AUTOMÁTICA DE PROVEEDOR
+if (apiKey.startsWith('sk-')) {
+    // Es una clave de OpenAI
+    API_URL = "https://api.openai.com/v1/chat/completions";
+    MODEL = "gpt-4o-mini";
+    PROVIDER_NAME = "OpenAI";
+}
+
+// Diagnóstico
+console.log("🤖 Piero AI Config:", { 
+    provider: PROVIDER_NAME,
+    hasKey: !!apiKey, 
+    keyStart: apiKey ? apiKey.substring(0, 4) + "..." : "NONE",
+    mode: import.meta.env.MODE 
+});
 
 /**
  * LÓGICA LOCAL DE RESPALDO (FALLBACK)
@@ -69,6 +78,7 @@ export const createPieroChatSession = (contextData) => {
     Eres "Piero AI", el estratega de negocios inteligente de PieroSys.
     
     DATOS DEL NEGOCIO EN TIEMPO REAL:
+    - FECHA Y HORA ACTUAL: ${new Date().toLocaleString()}
     - TASA DE CAMBIO ACTUAL: 1 Sol = ${exchangeRate || 1.6} Reales.
     - KPI: ${JSON.stringify(stats || {})}
     - INVENTARIO: ${inventorySummary.substring(0, 50000)}...
@@ -76,7 +86,7 @@ export const createPieroChatSession = (contextData) => {
     
     TUS 5 FUNCIONES PRINCIPALES (BUSINESS INTELLIGENCE):
     
-    1. 📊 **Tendencias de Ventas**: Analiza el historial para identificar qué productos están subiendo en demanda esta semana.
+    1. 📊 **Tendencias de Ventas**: Analiza el historial. Si te preguntan por "ayer", calcula la fecha de ayer basándote en la FECHA ACTUAL y suma los totales de ese día.
     
     2. 🚨 **Alertas de Stock Bajo**: Revisa el inventario y avisa URGENTE si 'stock' <= 'min'. Sugiere reposición inmediata.
     
@@ -111,7 +121,7 @@ export const sendMessageToPiero = async (session, message) => {
 
   // Si no hay API Key, usar modo local inmediatamente
   if (!apiKey) {
-      return generateLocalResponse(message, session.contextData) + "\n\n*(⚠️ Error: No detecto la API Key en la configuración de la nube)*";
+      return generateLocalResponse(message, session.contextData) + "\n\n*(⚠️ Error de Configuración: No detecto la API Key. Si estás en Vercel, ve a la pestaña 'Deployments' y haz clic en 'Redeploy' para que tome la nueva variable)*";
   }
 
   // 1. Agregar mensaje del usuario al historial
@@ -149,6 +159,6 @@ export const sendMessageToPiero = async (session, message) => {
     
     // Fallback a local
     const localReply = generateLocalResponse(message, session.contextData);
-    return `${localReply}\n\n*(⚠️ Error IA: ${error.message}. Usando modo local)*`;
+    return `${localReply}\n\n*(⚠️ Error IA (${PROVIDER_NAME}): ${error.message}. Usando modo local)*`;
   }
 };

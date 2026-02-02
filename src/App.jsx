@@ -24,6 +24,23 @@ const App = () => {
     InventoryService.setExchangeRate(newRate);
   };
 
+  // --- NOTIFICACIONES EN TIEMPO REAL ---
+  useEffect(() => {
+    // Suscribirse a nuevas ventas
+    const unsubscribe = InventoryService.subscribeToSales((newSale) => {
+      // Verificar si tenemos permiso para notificar
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("💰 ¡Nueva Venta Registrada!", {
+          body: `Se registró una venta por R$ ${parseFloat(newSale.total_brl).toFixed(2)}`,
+          icon: '/vite.svg', // O el icono de tu app
+          requireInteraction: false // Se oculta sola después de unos segundos
+        });
+      }
+    });
+
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, []);
+
   const renderContent = () => {
     switch(activeTab) {
       case 'dashboard': return <Dashboard />;

@@ -123,16 +123,25 @@ const EditTransactionModal = ({ isOpen, onClose, transaction, onSave }) => {
 
 const FinancialTab = ({ transactions, onEdit }) => {
     const [monthFilter, setMonthFilter] = useState('ALL');
+    const [dayFilter, setDayFilter] = useState(''); // NUEVO: Filtro por día
     const [expandedId, setExpandedId] = useState(null);
 
     const filteredTransactions = useMemo(() => {
-        if (monthFilter === 'ALL') return transactions;
         return transactions.filter(t => {
             const d = new Date(t.timestamp);
+            
+            // 1. Filtro por Día Exacto (Prioridad)
+            if (dayFilter) {
+                const saleDate = d.toLocaleDateString('en-CA'); // Formato YYYY-MM-DD local
+                return saleDate === dayFilter;
+            }
+
+            // 2. Filtro por Mes
+            if (monthFilter === 'ALL') return true;
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             return key === monthFilter;
         });
-    }, [transactions, monthFilter]);
+    }, [transactions, monthFilter, dayFilter]);
 
     // Calcular KPI
     const totalRev = filteredTransactions.reduce((a, t) => a + (t.totalRevenue || 0), 0);
@@ -174,16 +183,38 @@ const FinancialTab = ({ transactions, onEdit }) => {
         <div className="space-y-6 animate-in fade-in">
             {/* FILTROS Y KPI */}
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-                <div className="bg-white p-2 rounded-xl border border-slate-200 flex items-center gap-2 shadow-sm">
-                    <Calendar className="text-slate-400 ml-2" size={18}/>
-                    <select 
-                        value={monthFilter} 
-                        onChange={e => setMonthFilter(e.target.value)}
-                        className="bg-transparent font-bold text-slate-700 outline-none pr-4 py-1"
-                    >
-                        <option value="ALL">Todo el Historial</option>
-                        {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                <div className="flex flex-wrap gap-2 items-center">
+                    {/* Selector de Mes */}
+                    <div className={`bg-white p-2 rounded-xl border flex items-center gap-2 shadow-sm transition-colors ${dayFilter ? 'border-slate-100 opacity-50' : 'border-slate-200'}`}>
+                        <Calendar className="text-slate-400 ml-2" size={18}/>
+                        <select 
+                            value={monthFilter} 
+                            onChange={e => { setMonthFilter(e.target.value); setDayFilter(''); }}
+                            disabled={!!dayFilter}
+                            className="bg-transparent font-bold text-slate-700 outline-none pr-4 py-1 disabled:cursor-not-allowed"
+                        >
+                            <option value="ALL">Todo el Historial</option>
+                            {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                    </div>
+
+                    <span className="text-slate-300 font-black text-xs">O</span>
+
+                    {/* Selector de Día (NUEVO) */}
+                    <div className={`bg-white p-2 rounded-xl border flex items-center gap-2 shadow-sm transition-colors ${dayFilter ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
+                        <span className="text-[10px] font-black uppercase text-slate-400 pl-2">Día:</span>
+                        <input 
+                            type="date" 
+                            value={dayFilter}
+                            onChange={e => { setDayFilter(e.target.value); setMonthFilter('ALL'); }}
+                            className="bg-transparent font-bold text-slate-700 outline-none py-1 text-sm"
+                        />
+                        {dayFilter && (
+                            <button onClick={() => setDayFilter('')} className="text-slate-400 hover:text-rose-500">
+                                <X size={16}/>
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <button onClick={exportExcel} className="text-xs font-bold text-emerald-600 hover:bg-emerald-50 px-4 py-2 rounded-lg transition-colors border border-emerald-100 flex items-center gap-2">
                     <Download size={14}/> Excel

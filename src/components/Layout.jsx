@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, PackagePlus, Truck, ShoppingCart, BarChart3, Settings, Boxes, Database, Menu, Bot } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, PackagePlus, Truck, ShoppingCart, BarChart3, Settings, Boxes, Database, Menu, Bot, Bell, BellOff } from 'lucide-react';
 
 const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }) => {
   
@@ -14,6 +14,18 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
   ];
 
   const activeItem = menuItems.find(i => i.id === activeTab) || (activeTab === 'settings' ? {label: 'Configuración', mobileLabel: 'Config'} : menuItems[0]);
+
+  // Estado de permisos de notificación
+  const [notifPermission, setNotifPermission] = useState(Notification.permission);
+
+  const requestNotification = async () => {
+    if (!("Notification" in window)) return alert("Tu navegador no soporta notificaciones.");
+    const permission = await Notification.requestPermission();
+    setNotifPermission(permission);
+    if (permission === 'granted') {
+      new Notification("🔔 Notificaciones Activadas", { body: "Te avisaremos cuando se registre una venta." });
+    }
+  };
 
   return (
     // Usamos dvh (Dynamic Viewport Height) para solucionar problemas de scroll en móviles iOS/Android
@@ -58,6 +70,14 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
         {/* Desktop Settings */}
         <div className="p-6 bg-slate-900/50 backdrop-blur-sm border-t border-slate-800">
           <div className="flex items-center justify-between mb-3">
+            {/* Botón Notificaciones Desktop */}
+            <button 
+                onClick={requestNotification}
+                className={`text-[10px] font-black uppercase flex items-center gap-2 transition-colors tracking-widest ${notifPermission === 'granted' ? 'text-emerald-500' : 'text-slate-500 hover:text-white'}`}
+                title={notifPermission === 'granted' ? 'Notificaciones Activas' : 'Activar Notificaciones'}
+            >
+              {notifPermission === 'granted' ? <Bell size={14} /> : <BellOff size={14} />} {notifPermission === 'granted' ? 'Alertas ON' : 'Alertas OFF'}
+            </button>
             <button 
                 onClick={() => setActiveTab('settings')}
                 className={`text-[10px] font-black uppercase flex items-center gap-2 hover:text-white transition-colors tracking-widest ${activeTab === 'settings' ? 'text-emerald-400' : 'text-slate-500'}`}
@@ -99,6 +119,13 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
                 </div>
             </div>
             
+            {/* Mobile Notification Toggle */}
+            <button 
+              onClick={requestNotification}
+              className={`p-2.5 rounded-xl border transition-all active:scale-95 mr-2 ${notifPermission === 'granted' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
+            >
+                {notifPermission === 'granted' ? <Bell size={18}/> : <BellOff size={18}/>}
+            </button>
             {/* Mobile Settings Shortcut */}
             <button 
               onClick={() => setActiveTab('settings')} 
