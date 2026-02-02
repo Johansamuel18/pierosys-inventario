@@ -159,7 +159,8 @@ const PieroAI = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] bg-slate-800 rounded-xl border border-slate-700 shadow-xl overflow-hidden">
+    // CAMBIO: Altura dinámica para móvil (100dvh - espacio de header/nav) y fija para desktop
+    <div className="flex flex-col h-[calc(100dvh-150px)] md:h-[calc(100vh-6rem)] bg-slate-800 rounded-xl border border-slate-700 shadow-xl overflow-hidden">
       {/* Header */}
       <div className="p-4 bg-slate-900/50 border-b border-slate-700 flex justify-between items-center">
         <div className="flex items-center gap-3">

@@ -136,8 +136,8 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
         </header>
 
         {/* CONTENT SCROLLABLE AREA */}
-        {/* pb-[120px] asegura que el contenido final nunca quede tapado por la barra de navegación */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-10 pb-[120px] md:pb-10 scroll-smooth">
+        {/* Ajustamos pb (padding-bottom) para móviles: 100px es suficiente para librar el menú */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-10 pb-[100px] md:pb-10 scroll-smooth">
           <div className="max-w-7xl mx-auto h-full animate-in fade-in slide-in-from-bottom-2 duration-500">
             {children}
           </div>
@@ -145,7 +145,8 @@ const Layout = ({ children, activeTab, setActiveTab, currentRate, onRateChange }
 
         {/* MOBILE BOTTOM NAVIGATION (Premium Dock) */}
         <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-100 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-50 pb-safe">
-            <div className="flex justify-around items-center h-[70px] px-2 max-w-md mx-auto">
+            {/* Reducimos altura de 70px a 65px para ganar espacio */}
+            <div className="flex justify-around items-center h-[65px] px-2 max-w-md mx-auto">
                 {menuItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;

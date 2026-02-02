@@ -28,6 +28,12 @@ const App = () => {
   useEffect(() => {
     // Suscribirse a nuevas ventas
     const unsubscribe = InventoryService.subscribeToSales((newSale) => {
+      
+      // 1. Reproducir sonido de caja registradora
+      const audio = new Audio('https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3?filename=cash-register-purchase-87313.mp3');
+      audio.volume = 0.5;
+      audio.play().catch(e => console.log("Audio play blocked", e));
+
       // Verificar si tenemos permiso para notificar
       if ("Notification" in window && Notification.permission === "granted") {
         new Notification("💰 ¡Nueva Venta Registrada!", {
