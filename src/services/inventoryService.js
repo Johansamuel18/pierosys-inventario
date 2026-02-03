@@ -607,7 +607,7 @@ export const InventoryService = {
                 *,
                 sale_items (
                     *,
-                    variants ( name, products ( name ) )
+                    variants ( name, sales_unit, products ( name ) )
                 )
             `)
             .order('created_at', { ascending: false });
@@ -626,7 +626,8 @@ export const InventoryService = {
                     variantName: (item.variants?.name || '-').toUpperCase(),
                     quantity: parseFloat(item.quantity) || 0,
                     subtotal: parseFloat(item.subtotal_brl) || 0,
-                    unitPrice: parseFloat(item.price_unit_brl) || 0 
+                    unitPrice: parseFloat(item.price_unit_brl) || 0,
+                    unit: item.variants?.sales_unit || 'UND'
                 };
             });
 
