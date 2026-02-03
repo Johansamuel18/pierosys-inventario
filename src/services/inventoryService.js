@@ -1,12 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURACIÓN SUPABASE ---
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zhjwhllxznfzeudwryhy.supabase.co';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpoandobGx4em5memV1ZHdyeWh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4OTA1NTcsImV4cCI6MjA4MzQ2NjU1N30.61FNHPQnrtrq0E0kv-9NT8WtDZ1gfbg_cJZHg-Toso4';
 
 if (!supabaseUrl || !supabaseKey) {
     console.error("🚨 Error crítico: Faltan las variables de entorno VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY en el archivo .env");
 }
+
+// Validación extra para evitar que la app explote si las credenciales están vacías
+if (!supabaseUrl) throw new Error("supabaseUrl is required (Revisa tu archivo .env o inventoryService.js)");
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
