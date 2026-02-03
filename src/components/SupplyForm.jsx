@@ -19,6 +19,7 @@ const SupplyForm = () => {
   const [inputQty, setInputQty] = useState('');     // Cantidad física (Cajas o Unidades)
   const [inputCost, setInputCost] = useState('');   // Costo en Soles (Por Caja o Unidad)
   const [isCostLocked, setIsCostLocked] = useState(true); // NUEVO: Bloqueo de costo por defecto
+  const [isTotalCostMode, setIsTotalCostMode] = useState(false); // NUEVO: Modo Costo Total
   
   // --- ESTADOS DE PRECIO DE VENTA (SEGURIDAD) ---
   const [shouldUpdatePrice, setShouldUpdatePrice] = useState(false);
@@ -72,7 +73,7 @@ const SupplyForm = () => {
 
         // B. Lógica de Pre-llenado de Costo (REQUERIMIENTO 1)
         // Solo sobreescribimos el costo si está BLOQUEADO. Si el usuario lo editó, respetamos su valor.
-        if (isCostLocked) {
+        if (isCostLocked && !isTotalCostMode) {
             const baseDbCost = selectedVariant.priceBuySoles || 0;
             let suggestedCost = 0;
 
@@ -115,16 +116,26 @@ const SupplyForm = () => {
       const factor = supplyMode === 'PACK' ? conversionFactor : 1;
       const totalStockToAdd = qtyInputVal * factor;
 
-      // B. Calcular Costo Unitario en Soles (Base)
-      // Si el modo es PACK, dividimos el costo ingresado entre el factor
-      const realUnitCostSolesRaw = supplyMode === 'PACK' && factor > 0 ? (costInputVal / factor) : costInputVal;
-      const realUnitCostSoles = roundMoney(realUnitCostSolesRaw);
+      // B. Calcular Costos (Soles)
+      let realUnitCostSoles = 0;
+      let totalInvestmentSoles = 0;
+
+      if (isTotalCostMode) {
+          // MODO TOTAL: El input ES el total a pagar
+          totalInvestmentSoles = costInputVal;
+          // Calculamos el unitario con alta precisión (sin redondear a 2 decimales aquí para no perder valor)
+          realUnitCostSoles = totalStockToAdd > 0 ? (totalInvestmentSoles / totalStockToAdd) : 0;
+      } else {
+          // MODO UNITARIO: El input es por caja/unidad
+          const realUnitCostSolesRaw = supplyMode === 'PACK' && factor > 0 ? (costInputVal / factor) : costInputVal;
+          realUnitCostSoles = roundMoney(realUnitCostSolesRaw);
+          totalInvestmentSoles = roundMoney(costInputVal * qtyInputVal);
+      }
 
       // C. Conversión a Reales (Congelado)
       const frozenBRL = roundMoney(realUnitCostSoles * rate);
       
-      // D. Inversión Total (Cashflow)
-      const totalInvestmentSoles = roundMoney(costInputVal * qtyInputVal);
+      // D. Valorización Proyectada
 
       // REGLA 3: Valorización
       const projectedValueBRL = roundMoney(realUnitCostSoles * rate * totalStockToAdd);
@@ -182,7 +193,10 @@ const SupplyForm = () => {
   // Dynamic Labels
   const getPackLabel = () => packType === 'ROLLO' ? 'Por Rollo' : 'Por Caja/Bulto';
   const getQtyLabel = () => supplyMode === 'PACK' ? (packType === 'ROLLO' ? '(Rollos)' : '(Cajas)') : '(Unidades)';
-  const getCostLabel = () => supplyMode === 'PACK' ? (packType === 'ROLLO' ? 'por Rollo' : 'por Caja') : 'Unitario';
+  const getCostLabel = () => {
+      if (isTotalCostMode) return 'TOTAL (A Pagar)';
+      return supplyMode === 'PACK' ? (packType === 'ROLLO' ? 'por Rollo' : 'por Caja') : 'Unitario';
+  };
 
   if (loading) return <div className="p-10 text-center text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Cargando catálogo...</div>;
 
@@ -300,9 +314,17 @@ const SupplyForm = () => {
                                     <label className="label-header mb-0">
                                         Costo {getCostLabel()} (S/)
                                     </label>
-                                    <span className={`text-[9px] font-bold uppercase ${isCostLocked ? 'text-indigo-400' : 'text-orange-500'}`}>
-                                        {isCostLocked ? 'Precio BD (Bloqueado)' : 'Editando Precio'}
-                                    </span>
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            setIsTotalCostMode(!isTotalCostMode);
+                                            setIsCostLocked(false); // Al cambiar modo, desbloqueamos para escribir
+                                            setInputCost('');
+                                        }}
+                                        className="text-[9px] font-black uppercase text-indigo-500 hover:underline cursor-pointer"
+                                    >
+                                        {isTotalCostMode ? 'Cambiar a Unitario' : 'Ingresar Costo Total'}
+                                    </button>
                                 </div>
                                 
                                 <div className="relative group">
@@ -313,17 +335,18 @@ const SupplyForm = () => {
                                         step="0.01"
                                         value={inputCost}
                                         onChange={e => setInputCost(e.target.value)}
-                                        disabled={isCostLocked} // REQUERIMIENTO 1: Disabled por defecto
+                                        disabled={isCostLocked && !isTotalCostMode} // Solo bloqueado en modo unitario si viene de BD
                                         placeholder="0.00"
                                         className={`input-field !pl-12 text-xl pr-12 transition-colors ${
-                                            isCostLocked 
+                                            isCostLocked && !isTotalCostMode
                                             ? 'bg-slate-100 text-slate-500 cursor-not-allowed' 
                                             : 'bg-white text-slate-800 border-orange-200 focus:border-orange-500'
                                         }`}
                                     />
 
                                     {/* REQUERIMIENTO 2: Botón de Edición */}
-                                    <button
+                                    {!isTotalCostMode && (
+                                        <button
                                         type="button"
                                         onClick={() => setIsCostLocked(!isCostLocked)}
                                         className="absolute right-2 top-2 bottom-2 aspect-square flex items-center justify-center text-slate-400 hover:bg-slate-200 rounded-lg transition-colors z-20"
@@ -331,6 +354,7 @@ const SupplyForm = () => {
                                     >
                                         {isCostLocked ? <Pencil size={16}/> : <Lock size={16} className="text-orange-500"/>}
                                     </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -409,7 +433,7 @@ const SupplyForm = () => {
                                 <div className="space-y-4 pt-4 border-t border-white/10">
                                     <div className="flex justify-between items-center">
                                         <span className="text-xs font-bold text-slate-400 uppercase">Total a Pagar (S/)</span>
-                                        <span className="text-lg font-black text-slate-200">S/ {math.totalInvestmentSoles.toFixed(2)}</span>
+                                        <span className="text-2xl font-black text-white">S/ {math.totalInvestmentSoles.toFixed(2)}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-xs font-bold text-slate-400 uppercase">Costo Unit. Real (S/)</span>

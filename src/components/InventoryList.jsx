@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ChevronDown, ChevronUp, Package, Trash2, Ruler, RefreshCw, AlertOctagon, Plus, X, Save, Loader2, Calculator, Info, Box, Disc, Layers, Archive, Truck, DollarSign, Lock, Pencil, Edit3, TrendingUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Package, Trash2, Ruler, RefreshCw, AlertOctagon, Plus, X, Save, Loader2, Calculator, Info, Box, Disc, Layers, Archive, Truck, DollarSign, Lock, Pencil, Edit3, TrendingUp, History } from 'lucide-react';
 
 const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
 
@@ -623,6 +623,93 @@ const RestockModal = ({ isOpen, onClose, product, variant, onSave }) => {
 };
 
 // ==================================================================================
+// 3. COMPONENTE: MODAL DE HISTORIAL DE VENTAS (NUEVO)
+// ==================================================================================
+const SalesHistoryModal = ({ isOpen, onClose, product }) => {
+    const [sales, setSales] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (isOpen && product) {
+            loadHistory();
+        }
+    }, [isOpen, product]);
+
+    const loadHistory = async () => {
+        setLoading(true);
+        try {
+            const data = await InventoryService.getSalesByProduct(product.id);
+            setSales(data);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen || !product) return null;
+
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+                <div className="bg-slate-900 p-4 flex justify-between items-center text-white shrink-0">
+                    <div>
+                        <h3 className="font-black uppercase tracking-widest text-sm flex items-center gap-2">
+                            <History size={18} className="text-emerald-400"/> Historial de Ventas
+                        </h3>
+                        <p className="text-xs text-slate-400 font-bold mt-1">{product.name}</p>
+                    </div>
+                    <button onClick={onClose} className="hover:bg-white/20 p-1 rounded-full"><X size={20}/></button>
+                </div>
+
+                <div className="overflow-auto p-0 flex-1">
+                    {loading ? (
+                        <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-indigo-600" size={32}/></div>
+                    ) : sales.length === 0 ? (
+                        <div className="p-10 text-center text-slate-400 font-bold">No hay ventas registradas para este producto.</div>
+                    ) : (
+                        <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-50 text-slate-500 uppercase font-black sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <th className="p-3">Fecha</th>
+                                    <th className="p-3">Cliente</th>
+                                    <th className="p-3">Medida</th>
+                                    <th className="p-3 text-right">Cant.</th>
+                                    <th className="p-3 text-right">P. Unit (R$)</th>
+                                    <th className="p-3 text-right">Total (R$)</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {sales.map((sale) => (
+                                    <tr key={sale.id} className="hover:bg-slate-50">
+                                        <td className="p-3 font-medium text-slate-600">
+                                            {new Date(sale.date).toLocaleDateString()} <span className="text-slate-400 text-[10px]">{new Date(sale.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                        </td>
+                                        <td className="p-3 font-bold text-slate-700">{sale.clientName}</td>
+                                        <td className="p-3 text-slate-600"><span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md font-bold text-[10px]">{sale.variantName}</span></td>
+                                        <td className="p-3 text-right font-bold">{sale.quantity}</td>
+                                        <td className="p-3 text-right text-slate-500">{sale.unitPrice.toFixed(2)}</td>
+                                        <td className="p-3 text-right font-black text-emerald-600">{sale.subtotal.toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+                
+                <div className="bg-slate-50 p-3 border-t border-slate-200 shrink-0 flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-400 uppercase">{sales.length} Transacciones encontradas</span>
+                    <div className="text-right">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase mr-2">Total Ventas:</span>
+                        <span className="text-lg font-black text-emerald-600">R$ {sales.reduce((acc, s) => acc + s.subtotal, 0).toFixed(2)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ==================================================================================
 // 3. COMPONENTE PRINCIPAL: INVENTORY LIST
 // ==================================================================================
 const InventoryList = () => {
@@ -641,6 +728,10 @@ const InventoryList = () => {
   // NUEVO: Estado para Edición de Precio
   const [isPriceEditOpen, setIsPriceEditOpen] = useState(false);
   const [variantToEditPrice, setVariantToEditPrice] = useState(null);
+
+  // NUEVO: Estado para Historial
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyProduct, setHistoryProduct] = useState(null);
 
   const refresh = async () => {
     try {
@@ -775,6 +866,11 @@ const InventoryList = () => {
       await refresh();
   };
 
+  const handleOpenHistory = (group) => {
+      setHistoryProduct({ id: group.primaryDbId, name: group.name });
+      setIsHistoryOpen(true);
+  };
+
   const handleResetAll = async () => {
     const word = prompt("ESCRIBE: 'BORRAR TODO' para eliminar inventario y ventas.");
     if (word === "BORRAR TODO") {
@@ -869,6 +965,15 @@ const InventoryList = () => {
                                     
                                     <div className="w-px h-6 bg-slate-200 mx-1"></div>
                                     
+                                    {/* BOTON HISTORIAL (NUEVO) */}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleOpenHistory(group); }}
+                                        className="text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 p-2 rounded-lg transition-colors"
+                                        title="Ver Historial de Ventas"
+                                    >
+                                        <History size={18} />
+                                    </button>
+
                                     {/* BOTON EDITAR NOMBRE (NUEVO) */}
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleEditProductName(group); }}
@@ -1002,6 +1107,13 @@ const InventoryList = () => {
             onClose={() => setIsPriceEditOpen(false)}
             variant={variantToEditPrice}
             onSave={handleSaveNewPrice}
+        />
+
+        {/* MODAL DE HISTORIAL (NUEVO) */}
+        <SalesHistoryModal
+            isOpen={isHistoryOpen}
+            onClose={() => setIsHistoryOpen(false)}
+            product={historyProduct}
         />
     </>
   );

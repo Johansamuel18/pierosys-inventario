@@ -177,7 +177,15 @@ const SalesForm = () => {
       return alert(`Stock insuficiente. Disponible: ${stockAvailable}`);
     }
 
-    const calculatedSubtotal = roundMoney(qtyToAdd * unitPriceBRL);
+    // LÓGICA DE PRECISIÓN: Priorizar el total visual que ve el usuario
+    let finalSubtotal = roundMoney(qtyToAdd * unitPriceBRL);
+    const visualTotal = parseFloat(totalInput);
+    
+    // Si el usuario ingresó un total (o se calculó) y coincide aproximadamente,
+    // forzamos el uso del total visual para evitar problemas de redondeo (ej: 0.99 vs 1.00)
+    if (!isNaN(visualTotal) && Math.abs(visualTotal - finalSubtotal) < 0.1) {
+        finalSubtotal = visualTotal;
+    }
 
     const newItem = {
       tempId: Date.now().toString() + Math.random(),
@@ -186,7 +194,7 @@ const SalesForm = () => {
       name: selectedItem.fullName,
       quantity: qtyToAdd,
       unitPriceBRL: unitPriceBRL,
-      subtotalBRL: calculatedSubtotal,
+      subtotalBRL: finalSubtotal,
       unitLabel: selectedItem.salesUnit // Guardamos la unidad (KG/MT/UND)
     };
 

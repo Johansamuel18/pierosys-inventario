@@ -124,10 +124,30 @@ const EditTransactionModal = ({ isOpen, onClose, transaction, onSave }) => {
 const FinancialTab = ({ transactions, onEdit }) => {
     const [monthFilter, setMonthFilter] = useState('ALL');
     const [dayFilter, setDayFilter] = useState(''); // NUEVO: Filtro por día
+    const [productFilter, setProductFilter] = useState('ALL'); // NUEVO: Filtro por producto
     const [expandedId, setExpandedId] = useState(null);
+
+    // Obtener lista única de productos vendidos para el filtro
+    const uniqueProducts = useMemo(() => {
+        const products = new Set();
+        transactions.forEach(t => {
+            if (t.items) {
+                t.items.forEach(i => {
+                    if (i.productName) products.add(i.productName);
+                });
+            }
+        });
+        return Array.from(products).sort();
+    }, [transactions]);
 
     const filteredTransactions = useMemo(() => {
         return transactions.filter(t => {
+            // 0. Filtro por Producto (Nuevo)
+            if (productFilter !== 'ALL') {
+                const hasProduct = t.items?.some(i => i.productName === productFilter);
+                if (!hasProduct) return false;
+            }
+
             const d = new Date(t.timestamp);
             
             // 1. Filtro por Día Exacto (Prioridad)
@@ -141,7 +161,7 @@ const FinancialTab = ({ transactions, onEdit }) => {
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             return key === monthFilter;
         });
-    }, [transactions, monthFilter, dayFilter]);
+    }, [transactions, monthFilter, dayFilter, productFilter]);
 
     // Calcular KPI
     const totalRev = filteredTransactions.reduce((a, t) => a + (t.totalRevenue || 0), 0);
@@ -214,6 +234,19 @@ const FinancialTab = ({ transactions, onEdit }) => {
                                 <X size={16}/>
                             </button>
                         )}
+                    </div>
+
+                    {/* Selector de Producto (NUEVO) */}
+                    <div className={`bg-white p-2 rounded-xl border flex items-center gap-2 shadow-sm transition-colors ${productFilter !== 'ALL' ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
+                        <Package className="text-slate-400 ml-2" size={18}/>
+                        <select 
+                            value={productFilter} 
+                            onChange={e => setProductFilter(e.target.value)}
+                            className="bg-transparent font-bold text-slate-700 outline-none pr-4 py-1 text-sm max-w-[150px]"
+                        >
+                            <option value="ALL">Todos los Productos</option>
+                            {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
                     </div>
                 </div>
                 <button onClick={exportExcel} className="text-xs font-bold text-emerald-600 hover:bg-emerald-50 px-4 py-2 rounded-lg transition-colors border border-emerald-100 flex items-center gap-2">

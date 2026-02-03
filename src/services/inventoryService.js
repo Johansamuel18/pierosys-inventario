@@ -1,8 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURACIÓN SUPABASE ---
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zhjwhllxznfzeudwryhy.supabase.co'; 
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_W1EeD7BvFF6n-s58NcikOg_n-VVPcxm';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error("🚨 Error crítico: Faltan las variables de entorno VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY en el archivo .env");
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -370,8 +374,7 @@ export const InventoryService = {
                 .from('sales')
                 .insert({
                     created_at: group.date.toISOString(), 
-                    // REMOVIDO: client_name (Evitar crash si no existe columna)
-                    // client_name: group.clientName,
+                    client_name: group.clientName,
                     total_brl: group.totalBRL,
                     discount_brl: 0
                 })
@@ -492,16 +495,13 @@ export const InventoryService = {
   recordSaleTransaction: async (clientName, cartItems, globalDiscountBRL) => {
     const rate = parseFloat(localStorage.getItem(STORAGE_KEY_RATE) || 1.6);
     
-    // FIX: El campo client_name no existe en la base de datos de Supabase.
-    // Se elimina del insert para evitar el error "Could not find the 'client_name' column".
-    
     const subtotal = cartItems.reduce((acc, item) => acc + item.subtotalBRL, 0);
     const totalBRL = subtotal - globalDiscountBRL;
 
     const { data: saleHeader, error: headerError } = await supabase
         .from('sales')
         .insert({
-            // client_name: (clientName || 'CLIENTE').toUpperCase(),  // REMOVIDO POR ERROR DE ESQUEMA
+            client_name: (clientName || 'CLIENTE').toUpperCase(),
             total_brl: totalBRL,
             discount_brl: globalDiscountBRL
         })
@@ -545,8 +545,8 @@ export const InventoryService = {
   // --- ACTUALIZAR VENTA EXISTENTE ---
   updateSaleTransaction: async (saleId, clientName, items) => {
       try {
-          // REMOVIDO: Update de client_name para evitar error de esquema
-          // await supabase.from('sales').update({ client_name: safeClient }).eq('id', saleId);
+          const safeClient = (clientName || 'CLIENTE').toUpperCase();
+          await supabase.from('sales').update({ client_name: safeClient }).eq('id', saleId);
 
           let newTotalSaleBRL = 0;
 
@@ -643,6 +643,62 @@ export const InventoryService = {
 
     } catch (e) {
         console.error("Error fetching transactions:", e);
+        return [];
+    }
+  },
+
+  // --- FILTRAR VENTAS POR PRODUCTO ---
+  getSalesByProduct: async (productId) => {
+    try {
+        // 1. Obtener variantes del producto
+        const { data: variants } = await supabase
+            .from('variants')
+            .select('id')
+            .eq('product_id', productId);
+
+        if (!variants || variants.length === 0) return [];
+        const variantIds = variants.map(v => v.id);
+
+        // 2. Consultar sale_items filtrando por esas variantes
+        const { data, error } = await supabase
+            .from('sale_items')
+            .select(`
+                *,
+                sales ( * ),
+                variants (
+                    name,
+                    products ( name )
+                )
+            `)
+            .in('variant_id', variantIds);
+
+        if (error) throw error;
+
+        // 3. Formatear y ordenar
+        return data
+            .map(item => {
+                const subtotal = parseFloat(item.subtotal_brl);
+                const cost = parseFloat(item.historical_cost_total_brl || 0);
+                return {
+                    id: item.id,
+                    saleId: item.sale_id,
+                    timestamp: new Date(item.sales?.created_at).getTime(),
+                    date: item.sales?.created_at,
+                    productName: item.variants?.products?.name,
+                    variantName: item.variants?.name,
+                    quantity: parseFloat(item.quantity),
+                    subtotal: subtotal,
+                    profit: subtotal - cost,
+                    unitPrice: parseFloat(item.price_unit_brl),
+                    // Detalles de la transacción general (contexto)
+                    transactionTotal: parseFloat(item.sales?.total_brl),
+                    clientName: item.sales?.client_name || 'CLIENTE'
+                };
+            })
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+    } catch (e) {
+        console.error("Error fetching sales by product:", e);
         return [];
     }
   },
