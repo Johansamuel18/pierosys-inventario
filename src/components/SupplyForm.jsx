@@ -50,34 +50,48 @@ const SupplyForm = () => {
   const selectedItem = products.find(p => p.id == selectedProductId);
   const selectedVariant = selectedItem?.variants?.find(v => v.id == selectedVariantId);
 
-  // 3. EFECTO: AL CAMBIAR VARIANTE O MODO (LÓGICA DE COSTOS AUTOMÁTICOS)
+  // HELPER: Detectar nombre de la unidad base (Kilo, Metro, Unidad)
+  const getBaseUnitLabel = () => {
+      const unit = (selectedVariant?.salesUnit || 'UND').toUpperCase();
+      if (unit === 'KG' || unit === 'KILO') return 'Kilo';
+      if (unit === 'MT' || unit === 'METRO') return 'Metro';
+      return 'Unidad';
+  };
+
+  // 3. EFECTO: AL CAMBIAR VARIANTE (RESET Y CONFIGURACIÓN INICIAL)
   useEffect(() => {
     if (selectedVariant) {
-        // A. Configuración de Modo (Bloqueo PACK/BULK)
         const unitType = selectedVariant.purchaseUnit || 'UNIDAD';
         const factor = selectedVariant.conversionFactor || 1;
-        
         const isBulkOnly = unitType === 'UNIDAD' || factor <= 1;
         
-        // Solo cambiamos el modo automáticamente si acabamos de seleccionar la variante (inputQty vacío es un proxy de "recién cargado")
-        if (inputQty === '') {
-            if (isBulkOnly) {
-                setCanUsePackMode(false);
-                setSupplyMode('BULK');
-            } else {
-                setCanUsePackMode(true);
-                setPackType(unitType === 'ROLLO' ? 'ROLLO' : 'CAJA');
-                setSupplyMode('PACK');
-            }
+        // 1. Configurar Modo
+        if (isBulkOnly) {
+            setCanUsePackMode(false);
+            setSupplyMode('BULK');
+        } else {
+            setCanUsePackMode(true);
+            setPackType(unitType === 'ROLLO' ? 'ROLLO' : 'CAJA');
+            setSupplyMode('PACK');
         }
 
-        // B. Lógica de Pre-llenado de Costo (REQUERIMIENTO 1)
-        // Solo sobreescribimos el costo si está BLOQUEADO. Si el usuario lo editó, respetamos su valor.
-        if (isCostLocked && !isTotalCostMode) {
+        // 2. Resetear Inputs
+        setInputQty('');
+        setIsCostLocked(true);
+        setShouldUpdatePrice(false);
+        setNewSalePriceInput(selectedVariant.priceSellBRL ? selectedVariant.priceSellBRL.toFixed(2) : '');
+    }
+  }, [selectedVariantId]); // Solo cuando cambia la variante
+
+  // 4. EFECTO: ACTUALIZAR COSTO SUGERIDO (AL CAMBIAR MODO O VARIANTE)
+  useEffect(() => {
+      if (selectedVariant && isCostLocked && !isTotalCostMode) {
+            const factor = selectedVariant.conversionFactor || 1;
             const baseDbCost = selectedVariant.priceBuySoles || 0;
             let suggestedCost = 0;
 
-            if (isBulkOnly || supplyMode === 'BULK') {
+            // Si estamos en modo BULK (o el producto solo permite BULK), usamos el costo base unitario
+            if (supplyMode === 'BULK') {
                 suggestedCost = baseDbCost;
             } else {
                 // Si es PACK, el costo sugerido es CostoUnitario * Factor
@@ -86,15 +100,8 @@ const SupplyForm = () => {
             
             // REQUERIMIENTO 4: Siempre 2 decimales
             setInputCost(suggestedCost > 0 ? suggestedCost.toFixed(2) : '');
-        }
-
-        // Resetear inputs de dinero si cambiamos de variante
-        if (inputQty === '') {
-             setShouldUpdatePrice(false);
-             setNewSalePriceInput(selectedVariant.priceSellBRL ? selectedVariant.priceSellBRL.toFixed(2) : ''); 
-        }
-    }
-  }, [selectedVariantId, supplyMode]); // Se ejecuta al cambiar variante O al cambiar de Pack a Bulk
+      }
+  }, [selectedVariantId, supplyMode, isCostLocked, isTotalCostMode]);
 
   const handleProductChange = (e) => {
       setSelectedProductId(e.target.value);
@@ -173,7 +180,7 @@ const SupplyForm = () => {
               priceToSend 
           );
           
-          const labelQty = supplyMode === 'PACK' ? (packType === 'ROLLO' ? 'Rollos' : 'Cajas') : 'Unidades';
+          const labelQty = supplyMode === 'PACK' ? (packType === 'ROLLO' ? 'Rollos' : 'Cajas') : (getBaseUnitLabel() === 'Unidad' ? 'Unidades' : `${getBaseUnitLabel()}s`);
           alert(`✅ Abastecimiento Exitoso.\n\nIngreso: ${inputQty} ${labelQty}\nStock total sumado: +${math.totalStockToAdd}\nCosto Unitario: S/ ${math.realUnitCostSoles.toFixed(2)}`);
           
           // Limpieza inteligente
@@ -192,10 +199,14 @@ const SupplyForm = () => {
 
   // Dynamic Labels
   const getPackLabel = () => packType === 'ROLLO' ? 'Por Rollo' : 'Por Caja/Bulto';
-  const getQtyLabel = () => supplyMode === 'PACK' ? (packType === 'ROLLO' ? '(Rollos)' : '(Cajas)') : '(Unidades)';
+  const getQtyLabel = () => {
+      if (supplyMode === 'PACK') return packType === 'ROLLO' ? '(Rollos)' : '(Cajas)';
+      return getBaseUnitLabel() === 'Unidad' ? '(Unidades)' : `(${getBaseUnitLabel()}s)`;
+  };
   const getCostLabel = () => {
       if (isTotalCostMode) return 'TOTAL (A Pagar)';
-      return supplyMode === 'PACK' ? (packType === 'ROLLO' ? 'por Rollo' : 'por Caja') : 'Unitario';
+      if (supplyMode === 'PACK') return packType === 'ROLLO' ? 'por Rollo' : 'por Caja';
+      return `por ${getBaseUnitLabel()}`;
   };
 
   if (loading) return <div className="p-10 text-center text-slate-500"><Loader2 className="animate-spin inline mr-2"/> Cargando catálogo...</div>;
@@ -289,7 +300,7 @@ const SupplyForm = () => {
                                     : 'text-slate-400 hover:text-slate-600'
                                 }`}
                             >
-                                <Layers size={16}/> Por Unidad Suelta
+                                <Layers size={16}/> Por {getBaseUnitLabel()} {getBaseUnitLabel() === 'Unidad' ? 'Suelta' : 'Suelto'}
                             </button>
                         </div>
 
