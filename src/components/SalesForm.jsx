@@ -26,7 +26,10 @@ const SalesForm = () => {
   const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
   
   // Helper para mostrar números limpios (3.000 -> 3, 2.500 -> 2.5)
-  const formatQty = (num) => Number(parseFloat(num).toFixed(3));
+  const formatQty = (num) => {
+      const val = parseFloat(num);
+      return isNaN(val) ? 0 : Number(val.toFixed(3));
+  };
 
   // Helper para pluralizar etiquetas
   const getUnitLabel = (unitType, qty) => {

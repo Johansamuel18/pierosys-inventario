@@ -808,12 +808,13 @@ export const InventoryService = {
   // --- DASHBOARD UPDATED ---
   fetchDashboardStats: async () => {
     try {
-        const { data: variants } = await supabase.from('variants').select('stock_quantity, price_buy_soles, min_stock');
+        const { data: variants } = await supabase.from('variants').select('stock_quantity, price_buy_soles, min_stock, name, products(name)');
         const rate = parseFloat(localStorage.getItem(STORAGE_KEY_RATE) || 1.6);
         
         let totalInventoryValueBRL = 0;
         let lowStockCount = 0;
         let restockCostBRL = 0; // NUEVO KPI: Capital necesario para reponer
+        let lowStockItems = []; // Lista de nombres para el dashboard
 
         if (variants) {
             variants.forEach(v => {
@@ -829,6 +830,15 @@ export const InventoryService = {
                     const targetStock = min + 5;
                     const needed = Math.max(0, targetStock - stock);
                     restockCostBRL += (needed * costBRL);
+
+                    // Guardamos los primeros 10 para la ventanita desplegable
+                    if (lowStockItems.length < 10) {
+                        lowStockItems.push({
+                            name: `${v.products?.name || ''} ${v.name || ''}`.trim(),
+                            stock: stock,
+                            min: min
+                        });
+                    }
                 }
             });
         }
@@ -856,7 +866,8 @@ export const InventoryService = {
             totalSalesTodayBRL,
             totalProfitTodayBRL,
             lowStockCount,
-            restockCostBRL // Return new Metric
+            restockCostBRL,
+            lowStockItems
         };
     } catch (e) {
         return { totalInventoryValueBRL: 0, totalSalesTodayBRL: 0, totalProfitTodayBRL: 0, lowStockCount: 0, restockCostBRL: 0 };

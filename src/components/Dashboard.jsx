@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { DollarSign, Package, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
+import { DollarSign, Package, TrendingUp, AlertTriangle, Loader2, ChevronDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const Dashboard = () => {
@@ -9,10 +9,12 @@ const Dashboard = () => {
       totalSalesTodayBRL: 0,
       totalProfitTodayBRL: 0,
       lowStockCount: 0,
-      restockCostBRL: 0 // Nuevo Campo
+      restockCostBRL: 0,
+      lowStockItems: [] // Inicializamos la lista
   });
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isLowStockOpen, setIsLowStockOpen] = useState(false); // Estado para la ventanita
 
   useEffect(() => {
     const loadData = async () => {
@@ -58,12 +60,12 @@ const Dashboard = () => {
     return Object.entries(data).map(([name, total]) => ({ name, total: parseFloat(total.toFixed(2)) }));
   }, [sales]);
 
-  const StatCard = ({ title, value, sub, icon: Icon, color }) => (
-    <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-100 flex items-center justify-between transition-transform hover:-translate-y-1">
+  const StatCard = ({ title, value, sub, icon: Icon, color, onClick, className }) => (
+    <div onClick={onClick} className={`bg-white p-6 rounded-2xl shadow-lg border border-slate-100 flex items-center justify-between transition-transform hover:-translate-y-1 ${className || ''}`}>
       <div>
         <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">{title}</p>
         <h3 className="text-2xl font-black text-slate-800">{loading ? '...' : value}</h3>
-        {sub && <p className={`text-[10px] font-bold mt-1 ${color === 'rose' ? 'text-rose-500' : 'text-emerald-500'}`}>{sub}</p>}
+        {sub && <p className={`text-[10px] font-bold mt-1 text-${color}-500`}>{sub}</p>}
       </div>
       <div className={`p-4 rounded-xl bg-${color}-50 text-${color}-600`}>
         <Icon size={28} />
@@ -103,13 +105,58 @@ const Dashboard = () => {
           icon={Package}
           color="slate"
         />
-        <StatCard 
-          title="Alertas Stock" 
-          value={stats.lowStockCount} 
-          sub={stats.restockCostBRL > 0 ? `Se necesitan R$ ${stats.restockCostBRL.toFixed(2)}` : "Inventario Saludable"}
-          icon={AlertTriangle}
-          color="rose"
-        />
+        
+        {/* TARJETA INTERACTIVA DE STOCK BAJO */}
+        <div className="relative z-20">
+            <StatCard 
+              title="Stock Bajo" 
+              value={stats.lowStockCount} 
+              sub={
+                stats.lowStockCount > 0 
+                ? (
+                    <span className="flex items-center gap-1 cursor-pointer hover:underline">
+                        {stats.lowStockItems?.[0]?.name}
+                        {stats.lowStockCount > 1 && <span className="opacity-70 font-normal"> +{stats.lowStockCount - 1}</span>}
+                        <ChevronDown size={10}/>
+                    </span>
+                ) 
+                : "Todo en orden"
+              }
+              icon={AlertTriangle}
+              color="orange"
+              onClick={() => stats.lowStockCount > 0 && setIsLowStockOpen(!isLowStockOpen)}
+              className={stats.lowStockCount > 0 ? "cursor-pointer ring-2 ring-transparent hover:ring-orange-100" : ""}
+            />
+
+            {/* VENTANITA DESPLEGABLE */}
+            {isLowStockOpen && (
+                <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                    <div className="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Atención Requerida</span>
+                        <button onClick={() => setIsLowStockOpen(false)} className="text-slate-400 hover:text-slate-600 text-xs font-bold">Cerrar</button>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-1">
+                        {stats.lowStockItems.map((item, idx) => (
+                            <div key={idx} className="flex justify-between items-center p-2 hover:bg-orange-50 rounded-lg transition-colors border-b border-slate-50 last:border-0">
+                                <div className="flex-1 min-w-0 mr-3">
+                                    <p className="text-xs font-bold text-slate-700 truncate" title={item.name}>{item.name}</p>
+                                    <p className="text-[9px] text-slate-400 font-medium">Mínimo requerido: <span className="text-slate-600">{item.min}</span></p>
+                                </div>
+                                <div className="text-right bg-white px-2 py-1 rounded border border-slate-100 shadow-sm">
+                                    <span className="block text-xs font-black text-rose-500">{parseFloat(item.stock.toFixed(2))}</span>
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase">Stock</span>
+                                </div>
+                            </div>
+                        ))}
+                        {stats.lowStockCount > stats.lowStockItems.length && (
+                            <p className="text-center text-[9px] text-slate-400 py-2 italic bg-slate-50">
+                                ... y {stats.lowStockCount - stats.lowStockItems.length} productos más
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 h-96">
