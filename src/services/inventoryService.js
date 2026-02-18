@@ -158,6 +158,23 @@ export const InventoryService = {
       }
   },
 
+  // --- ACTUALIZAR NOMBRE VARIANTE (RENOMBRAR MEDIDA) ---
+  updateVariantName: async (variantId, newName) => {
+      try {
+          const finalName = newName.toUpperCase().trim();
+          const { error } = await supabase
+            .from('variants')
+            .update({ name: finalName })
+            .eq('id', variantId);
+          
+          if (error) throw error;
+          return true;
+      } catch (e) {
+          console.error("Error updating variant name:", e);
+          throw e;
+      }
+  },
+
   // --- NUEVO: ACTUALIZAR PRECIO VARIANTE INDIVIDUAL ---
   updateVariantPrice: async (variantId, newPriceBRL) => {
       try {

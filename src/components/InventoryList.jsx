@@ -825,6 +825,17 @@ const InventoryList = () => {
       }
   };
 
+  // EDITAR NOMBRE VARIANTE (RENOMBRAR MEDIDA)
+  const handleEditVariantName = async (variant) => {
+      const newName = prompt("Nuevo nombre para la medida:", variant.name);
+      if (newName && newName.trim() !== "") {
+          try {
+              await InventoryService.updateVariantName(variant.id, newName);
+              await refresh();
+          } catch (e) { alert("Error al renombrar medida: " + e.message); }
+      }
+  };
+
   const handleOpenAddVariant = (group) => {
       setSelectedParentProduct({ id: group.primaryDbId, name: group.name });
       setIsModalOpen(true);
@@ -1020,6 +1031,13 @@ const InventoryList = () => {
                                                                 {variant.name}
                                                             </span>
                                                             <div className="flex items-center gap-1">
+                                                                <button 
+                                                                    onClick={() => handleEditVariantName(variant)}
+                                                                    className="text-slate-300 hover:text-orange-500 p-1.5 rounded transition-colors"
+                                                                    title="Renombrar Medida"
+                                                                >
+                                                                    <Edit3 size={14}/>
+                                                                </button>
                                                                 <button 
                                                                     onClick={() => handleOpenRestock(group, variant)}
                                                                     className="bg-emerald-100 hover:bg-emerald-500 hover:text-white text-emerald-600 p-1.5 rounded transition-colors"
