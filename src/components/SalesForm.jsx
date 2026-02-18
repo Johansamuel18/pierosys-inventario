@@ -1,6 +1,37 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService } from '../services/inventoryService.js';
-import { ShoppingCart, Plus, Trash2, Search, Calculator, Tag, Layers, Box, AlertCircle, Banknote, Loader2, PackageSearch, Package, Ruler, ChevronDown, ArrowRight, User } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Search, Calculator, Tag, Layers, Box, AlertCircle, Banknote, Loader2, PackageSearch, Package, Ruler, ChevronDown, ArrowRight, User, Info, X, CheckCircle } from 'lucide-react';
+
+// COMPONENTE: MODAL DE CONFIRMACIÓN / ÉXITO
+const ConfirmActionModal = ({ isOpen, onClose, title, message, onConfirm, isDestructive, confirmText = "Confirmar", cancelText = "Cancelar", showCancel = true }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 transform scale-100 transition-all">
+                <div className={`p-4 flex justify-between items-center text-white ${isDestructive ? 'bg-rose-600' : (title.includes('Exitosa') ? 'bg-emerald-600' : 'bg-indigo-600')}`}>
+                    <h3 className="font-black uppercase tracking-widest text-sm flex items-center gap-2">
+                        {isDestructive ? <AlertCircle size={16}/> : (title.includes('Exitosa') ? <CheckCircle size={16}/> : <Info size={16}/>)} {title}
+                    </h3>
+                    <button onClick={onClose} className="hover:bg-white/20 p-1 rounded-full"><X size={16}/></button>
+                </div>
+                <div className="p-6">
+                    <p className="text-slate-600 font-medium text-sm mb-6 leading-relaxed">{message}</p>
+                    <div className="flex gap-3">
+                        {showCancel && (
+                            <button onClick={onClose} className="flex-1 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">{cancelText}</button>
+                        )}
+                        <button 
+                            onClick={() => { if(onConfirm) onConfirm(); onClose(); }} 
+                            className={`flex-1 py-3 rounded-xl font-black text-white shadow-lg transition-transform active:scale-95 ${isDestructive ? 'bg-rose-600 hover:bg-rose-500' : (title.includes('Exitosa') ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-indigo-600 hover:bg-indigo-500')} ${!showCancel ? 'w-full' : ''}`}
+                        >
+                            {confirmText}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const SalesForm = () => {
   // --- DATA STATES ---
@@ -21,6 +52,9 @@ const SalesForm = () => {
   const [cart, setCart] = useState([]);
   const [globalDiscount, setGlobalDiscount] = useState('');
   const [clientName, setClientName] = useState(''); // NUEVO: Estado para el cliente
+
+  // --- MODAL STATE ---
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null, isDestructive: false, showCancel: true, confirmText: 'Confirmar' });
 
   // Helper de Redondeo
   const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
@@ -220,10 +254,23 @@ const SalesForm = () => {
   const netTotal = roundMoney(subtotal - discount);
   const isDiscountInvalid = discount > subtotal;
 
-  const handleConfirmSale = async () => {
+  const handleConfirmSale = () => {
     if (cart.length === 0) return;
     if (isDiscountInvalid) return alert("Descuento inválido");
 
+    setConfirmModal({
+        isOpen: true,
+        title: "Confirmar Venta",
+        message: `¿Estás seguro de procesar esta venta por un total de R$ ${netTotal.toFixed(2)}?`,
+        confirmText: "Sí, Vender",
+        cancelText: "Revisar",
+        showCancel: true,
+        isDestructive: false,
+        onConfirm: processSale
+    });
+  };
+
+  const processSale = async () => {
     try {
       setLoading(true);
       
@@ -234,8 +281,16 @@ const SalesForm = () => {
           discount
       );
 
-      alert("Venta registrada correctamente.");
-      
+      setConfirmModal({
+          isOpen: true,
+          title: "¡Venta Exitosa!",
+          message: "La transacción se ha registrado correctamente en el sistema.",
+          confirmText: "Aceptar",
+          showCancel: false,
+          isDestructive: false,
+          onConfirm: null
+      });
+
       // Reset
       setCart([]);
       setGlobalDiscount('');
@@ -248,7 +303,15 @@ const SalesForm = () => {
 
     } catch (err) {
       console.error(err);
-      alert("Error al procesar venta: " + err.message);
+      setConfirmModal({
+          isOpen: true,
+          title: "Error",
+          message: "Hubo un problema al registrar la venta: " + err.message,
+          confirmText: "Cerrar",
+          showCancel: false,
+          isDestructive: true,
+          onConfirm: null
+      });
     } finally {
         setLoading(false);
     }
@@ -544,6 +607,13 @@ const SalesForm = () => {
 
             </div>
         </div>
+
+        {/* MODAL DE CONFIRMACIÓN / ÉXITO */}
+        <ConfirmActionModal 
+            isOpen={confirmModal.isOpen}
+            onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+            {...confirmModal}
+        />
     </div>
   );
 };

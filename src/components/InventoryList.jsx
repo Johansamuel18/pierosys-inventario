@@ -5,6 +5,78 @@ import { ChevronDown, ChevronUp, Package, Trash2, Ruler, RefreshCw, AlertOctagon
 const roundMoney = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
 
 // ==================================================================================
+// COMPONENTE: MODAL DE CONFIRMACIÓN GENÉRICO (NUEVO)
+// ==================================================================================
+const ConfirmActionModal = ({ isOpen, onClose, title, message, onConfirm, isDestructive }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 transform scale-100 transition-all">
+                <div className={`p-4 flex justify-between items-center text-white ${isDestructive ? 'bg-rose-600' : 'bg-indigo-600'}`}>
+                    <h3 className="font-black uppercase tracking-widest text-sm flex items-center gap-2">
+                        {isDestructive ? <AlertOctagon size={16}/> : <Info size={16}/>} {title}
+                    </h3>
+                    <button onClick={onClose} className="hover:bg-white/20 p-1 rounded-full"><X size={16}/></button>
+                </div>
+                <div className="p-6">
+                    <p className="text-slate-600 font-medium text-sm mb-6 leading-relaxed">{message}</p>
+                    <div className="flex gap-3">
+                        <button onClick={onClose} className="flex-1 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">Cancelar</button>
+                        <button onClick={() => { onConfirm(); onClose(); }} className={`flex-1 py-3 rounded-xl font-black text-white shadow-lg transition-transform active:scale-95 ${isDestructive ? 'bg-rose-600 hover:bg-rose-500' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                            Confirmar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ==================================================================================
+// COMPONENTE: MODAL DE RENOMBRAR (NUEVO)
+// ==================================================================================
+const RenameModal = ({ isOpen, onClose, title, initialValue, onSave }) => {
+    const [value, setValue] = useState(initialValue);
+    useEffect(() => { setValue(initialValue); }, [initialValue, isOpen]);
+
+    if (!isOpen) return null;
+    
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(value);
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 transform scale-100 transition-all">
+                <div className="bg-indigo-600 p-4 flex justify-between items-center text-white">
+                    <h3 className="font-black uppercase tracking-widest text-sm flex items-center gap-2">
+                        <Edit3 size={16}/> {title}
+                    </h3>
+                    <button onClick={onClose} className="hover:bg-white/20 p-1 rounded-full"><X size={16}/></button>
+                </div>
+                <form onSubmit={handleSubmit} className="p-6">
+                    <input 
+                        autoFocus
+                        type="text" 
+                        value={value} 
+                        onChange={e => setValue(e.target.value.toUpperCase())}
+                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 outline-none focus:border-indigo-500 mb-6 uppercase"
+                    />
+                    <div className="flex gap-3">
+                        <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">Cancelar</button>
+                        <button type="submit" className="flex-1 py-3 rounded-xl font-black text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg transition-transform active:scale-95">
+                            Guardar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// ==================================================================================
 // COMPONENTE: MODAL DE EDICIÓN DE PRECIO (NUEVO)
 // ==================================================================================
 const EditPriceModal = ({ isOpen, onClose, variant, onSave }) => {
@@ -733,6 +805,10 @@ const InventoryList = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyProduct, setHistoryProduct] = useState(null);
 
+  // NUEVO: Estados para Modales de Confirmación y Renombrado
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {}, isDestructive: false });
+  const [renameModal, setRenameModal] = useState({ isOpen: false, title: '', initialValue: '', onSave: () => {} });
+
   const refresh = async () => {
     try {
       setLoading(true);
@@ -795,45 +871,69 @@ const InventoryList = () => {
   );
 
   // ELIMINAR PRODUCTO COMPLETO (PADRE)
-  const handleDeleteProduct = async (id) => {
-    if(confirm('ATENCIÓN: ¿Seguro que deseas eliminar el PRODUCTO COMPLETO?\n\nSe borrarán TODAS las medidas y todo el historial de ventas.\nEsta acción no se puede deshacer.')) {
-        try {
-            await InventoryService.deleteProduct(id);
-            await refresh();
-        } catch (e) { alert("Error al eliminar: " + e.message); }
-    }
+  const handleDeleteProduct = (id) => {
+      setConfirmModal({
+          isOpen: true,
+          title: "Eliminar Producto",
+          message: "ATENCIÓN: ¿Seguro que deseas eliminar el PRODUCTO COMPLETO? Se borrarán TODAS las medidas y todo el historial de ventas. Esta acción no se puede deshacer.",
+          isDestructive: true,
+          onConfirm: async () => {
+              try {
+                  await InventoryService.deleteProduct(id);
+                  await refresh();
+              } catch (e) { alert("Error al eliminar: " + e.message); }
+          }
+      });
   };
 
   // ELIMINAR VARIANTE INDIVIDUAL (HIJO)
-  const handleDeleteVariant = async (variantId) => {
-      if(confirm('¿Seguro que deseas eliminar esta medida específica?\n\nEl historial de ventas asociado también se borrará.')) {
-          try {
-              await InventoryService.deleteVariant(variantId);
-              await refresh();
-          } catch (e) { alert("Error al eliminar medida: " + e.message); }
-      }
+  const handleDeleteVariant = (variantId) => {
+      setConfirmModal({
+          isOpen: true,
+          title: "Eliminar Medida",
+          message: "¿Seguro que deseas eliminar esta medida específica? El historial de ventas asociado también se borrará.",
+          isDestructive: true,
+          onConfirm: async () => {
+              try {
+                  await InventoryService.deleteVariant(variantId);
+                  await refresh();
+              } catch (e) { alert("Error al eliminar medida: " + e.message); }
+          }
+      });
   };
 
   // EDITAR NOMBRE PRODUCTO (RENOMBRAR)
-  const handleEditProductName = async (group) => {
-      const newName = prompt("Nuevo nombre para el producto:", group.name);
-      if (newName && newName.trim() !== "") {
-          try {
-              await InventoryService.updateProductName(group.primaryDbId, newName);
-              await refresh();
-          } catch (e) { alert("Error al renombrar: " + e.message); }
-      }
+  const handleEditProductName = (group) => {
+      setRenameModal({
+          isOpen: true,
+          title: "Renombrar Producto",
+          initialValue: group.name,
+          onSave: async (newName) => {
+              if (newName && newName.trim() !== "") {
+                  try {
+                      await InventoryService.updateProductName(group.primaryDbId, newName);
+                      await refresh();
+                  } catch (e) { alert("Error al renombrar: " + e.message); }
+              }
+          }
+      });
   };
 
   // EDITAR NOMBRE VARIANTE (RENOMBRAR MEDIDA)
-  const handleEditVariantName = async (variant) => {
-      const newName = prompt("Nuevo nombre para la medida:", variant.name);
-      if (newName && newName.trim() !== "") {
-          try {
-              await InventoryService.updateVariantName(variant.id, newName);
-              await refresh();
-          } catch (e) { alert("Error al renombrar medida: " + e.message); }
-      }
+  const handleEditVariantName = (variant) => {
+      setRenameModal({
+          isOpen: true,
+          title: "Renombrar Medida",
+          initialValue: variant.name,
+          onSave: async (newName) => {
+              if (newName && newName.trim() !== "") {
+                  try {
+                      await InventoryService.updateVariantName(variant.id, newName);
+                      await refresh();
+                  } catch (e) { alert("Error al renombrar medida: " + e.message); }
+              }
+          }
+      });
   };
 
   const handleOpenAddVariant = (group) => {
@@ -1132,6 +1232,20 @@ const InventoryList = () => {
             isOpen={isHistoryOpen}
             onClose={() => setIsHistoryOpen(false)}
             product={historyProduct}
+        />
+
+        {/* MODAL DE CONFIRMACIÓN GENÉRICO */}
+        <ConfirmActionModal 
+            isOpen={confirmModal.isOpen}
+            onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+            {...confirmModal}
+        />
+
+        {/* MODAL DE RENOMBRAR */}
+        <RenameModal
+            isOpen={renameModal.isOpen}
+            onClose={() => setRenameModal({ ...renameModal, isOpen: false })}
+            {...renameModal}
         />
     </>
   );
