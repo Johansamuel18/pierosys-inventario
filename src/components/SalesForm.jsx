@@ -274,11 +274,16 @@ const SalesForm = () => {
     try {
       setLoading(true);
       
+      // FIX: Ajuste de zona horaria para evitar que ventas nocturnas pasen al día siguiente en UTC
+      const now = new Date();
+      const localDate = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString();
+
       // Llamada a la nueva función de transacción en bloque
       await InventoryService.recordSaleTransaction(
           clientName,
           cart,
-          discount
+          discount,
+          localDate
       );
 
       setConfirmModal({
