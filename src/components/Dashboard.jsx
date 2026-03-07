@@ -21,8 +21,33 @@ const Dashboard = () => {
         setLoading(true);
         try {
             const dashboardStats = await InventoryService.fetchDashboardStats();
-            const salesData = await InventoryService.fetchSales();
-            setStats(dashboardStats);
+            // Usamos fetchTransactions para tener datos completos (profit/revenue) y consistencia con Reportes
+            const salesData = await InventoryService.fetchTransactions();
+            
+            // CÁLCULO MANUAL DE "HOY" USANDO ZONA HORARIA LIMA-PERU
+            const options = { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' };
+            const formatter = new Intl.DateTimeFormat('en-CA', options); // Formato YYYY-MM-DD
+            const todayPeru = formatter.format(new Date());
+
+            let salesToday = 0;
+            let profitToday = 0;
+
+            salesData.forEach(sale => {
+                const saleDate = new Date(sale.timestamp);
+                const saleDatePeru = formatter.format(saleDate);
+                
+                if (saleDatePeru === todayPeru) {
+                    salesToday += (sale.totalRevenue || sale.salePriceTotalBRL || 0);
+                    profitToday += (sale.totalProfit || 0);
+                }
+            });
+
+            // Sobrescribimos los datos del backend con el cálculo local preciso
+            setStats({
+                ...dashboardStats,
+                totalSalesTodayBRL: salesToday,
+                totalProfitTodayBRL: profitToday
+            });
             setSales(salesData);
         } catch (e) {
             console.error("Error loading dashboard", e);
@@ -52,7 +77,7 @@ const Dashboard = () => {
       if (diffDays <= 7) {
         const key = date.toLocaleDateString('es-BR', { weekday: 'short' });
         if (data[key] !== undefined) {
-          data[key] += (sale.salePriceTotalBRL || 0);
+          data[key] += (sale.totalRevenue || sale.salePriceTotalBRL || 0);
         }
       }
     });

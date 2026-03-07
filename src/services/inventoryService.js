@@ -41,7 +41,7 @@ export const InventoryService = {
                 *,
                 variants (*)
             `)
-            .order('created_at', { ascending: false });
+            .order('name', { ascending: true });
         
         if (error) throw error;
         if (!data) return [];
@@ -50,7 +50,7 @@ export const InventoryService = {
             id: p.id,
             name: p.name.toUpperCase(), // FORZAR VISUALIZACIÓN MAYUSCULA
             type: p.type,
-            variants: (p.variants || []).map(v => ({
+            variants: (p.variants || []).sort((a, b) => a.name.localeCompare(b.name)).map(v => ({
                 id: v.id,
                 name: v.name.toUpperCase(), // FORZAR VISUALIZACIÓN MAYUSCULA
                 productId: v.product_id,
@@ -129,11 +129,26 @@ export const InventoryService = {
             min_stock: 5
         }));
 
-        const { error: varError } = await supabase
+        const { data: insertedVariants, error: varError } = await supabase
             .from('variants')
-            .insert(variantsPayload);
+            .insert(variantsPayload)
+            .select();
 
         if (varError) throw varError;
+
+        // --- REGISTRO HISTORIAL INICIAL (Para que aparezca en reportes) ---
+        if (insertedVariants && insertedVariants.length > 0) {
+            const initialSupplies = insertedVariants
+                .filter(v => v.stock_quantity > 0)
+                .map(v => ({
+                    variant_id: v.id,
+                    quantity: v.stock_quantity,
+                    unit_cost_soles: v.price_buy_soles,
+                    total_cost_soles: v.stock_quantity * v.price_buy_soles
+                }));
+            if (initialSupplies.length > 0) await supabase.from('supplies').insert(initialSupplies);
+        }
+
         return true;
     } catch (e) {
         console.error("Supabase Error:", e.message);
@@ -194,7 +209,7 @@ export const InventoryService = {
   // --- AGREGAR VARIANTE A PRODUCTO EXISTENTE ---
   addVariant: async (productId, variantData) => {
       try {
-          const { error } = await supabase
+          const { data: insertedVariant, error } = await supabase
             .from('variants')
             .insert({
                 product_id: productId,
@@ -206,9 +221,22 @@ export const InventoryService = {
                 sales_unit: 'UND',
                 conversion_factor: variantData.conversion_factor || 1,
                 min_stock: 5
-            });
+            })
+            .select()
+            .single();
           
           if (error) throw error;
+
+          // --- REGISTRO HISTORIAL INICIAL ---
+          if (insertedVariant && insertedVariant.stock_quantity > 0) {
+              await supabase.from('supplies').insert({
+                  variant_id: insertedVariant.id,
+                  quantity: insertedVariant.stock_quantity,
+                  unit_cost_soles: insertedVariant.price_buy_soles,
+                  total_cost_soles: insertedVariant.stock_quantity * insertedVariant.price_buy_soles
+              });
+          }
+
           return true;
       } catch (e) {
           console.error("Error adding variant:", e);
@@ -508,6 +536,19 @@ export const InventoryService = {
         .eq('id', variantId);
 
     if (updateError) throw updateError;
+
+    // --- REGISTRO DE HISTORIAL DE ABASTECIMIENTO ---
+    try {
+        await supabase.from('supplies').insert({
+            variant_id: variantId,
+            quantity: parseFloat(addedQty),
+            unit_cost_soles: parseFloat(newCostSoles),
+            total_cost_soles: parseFloat(addedQty) * parseFloat(newCostSoles)
+        });
+    } catch (histError) {
+        console.warn("No se pudo guardar el historial (¿Existe la tabla 'supplies'?):", histError);
+    }
+
     return true;
   },
 
@@ -668,6 +709,34 @@ export const InventoryService = {
     }
   },
 
+  // --- HISTORIAL DE ABASTECIMIENTO ---
+  fetchSupplyHistory: async () => {
+    try {
+        const { data, error } = await supabase
+            .from('supplies')
+            .select(`
+                *,
+                variants ( name, products ( name ) )
+            `)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        return data.map(item => ({
+            id: item.id,
+            created_at: item.created_at,
+            product_name: (item.variants?.products?.name || 'Producto Eliminado').toUpperCase(),
+            variant_name: (item.variants?.name || '-').toUpperCase(),
+            quantity: parseFloat(item.quantity),
+            unit_cost_soles: parseFloat(item.unit_cost_soles),
+            total_cost_soles: parseFloat(item.total_cost_soles)
+        }));
+    } catch (e) {
+        console.error("Error fetching supply history:", e);
+        return [];
+    }
+  },
+
   // --- FILTRAR VENTAS POR PRODUCTO ---
   getSalesByProduct: async (productId) => {
     try {
@@ -751,8 +820,8 @@ export const InventoryService = {
 
             return {
                 id: v.id,
-                productName: v.products?.name,
-                variantName: v.name,
+                productName: (v.products?.name || '').toUpperCase(),
+                variantName: (v.name || '').toUpperCase(),
                 stock: stock,
                 unitCostBRL: costBRL,
                 totalInvestmentBRL: stock * costBRL, // DINERO CONGELADO
@@ -806,7 +875,7 @@ export const InventoryService = {
               if (daysSince > 30) { // CRITERIO: Más de 30 días sin venta
                   slowItems.push({
                       id: v.id,
-                      fullName: `${v.products?.name} ${v.name}`,
+                      fullName: `${v.products?.name} ${v.name}`.toUpperCase(),
                       stock: v.stock_quantity,
                       frozenValue: v.stock_quantity * v.price_buy_soles * rate,
                       daysSinceSale: daysSince === 999 ? 'Nunca' : daysSince
@@ -851,7 +920,7 @@ export const InventoryService = {
                     // Guardamos los primeros 10 para la ventanita desplegable
                     if (lowStockItems.length < 10) {
                         lowStockItems.push({
-                            name: `${v.products?.name || ''} ${v.name || ''}`.trim(),
+                            name: `${v.products?.name || ''} ${v.name || ''}`.trim().toUpperCase(),
                             stock: stock,
                             min: min
                         });
